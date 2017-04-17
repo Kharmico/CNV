@@ -22,16 +22,13 @@ public class WebServer {
         HttpServer server = HttpServer.create(new InetSocketAddress(8000), 0);
         executor = Executors.newFixedThreadPool(5);
         server.createContext("/r.html", new MyHandler());
-        System.out.println("I CAME THROUGH HERE!!!");
         server.setExecutor(executor); // creates a default executor
-        System.out.println("AND HERE TOO!!!");
         server.start();
     }
 
     static class MyHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange t) throws IOException {
-        	System.out.println("NICE SHINY STUFF IN HERE!!!");
             String response = t.getRequestURI().getQuery();
             String outputfile = String.valueOf(System.currentTimeMillis());
             String[] tokens = response.split("[&=]");
