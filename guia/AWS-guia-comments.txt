@@ -1,0 +1,13 @@
+Security Group
+Inbound must have:
+-2 ports for 80 (IPv4 & IPv6) this is for LoadBalancer
+-2 ports for 8000 (IPv4 & IPv6) this is for Instances
+
+Auto Scale Group
+Scaling Policies:
+Decrese Group Size Take the action: Remove 1 instances when 15>=CPUUtilization>-infinity
+Increase Group Size Take the action: Add 1 instances when 80<=CPUUtilization<+infinity
+
+Load Balancer
+Attributes:
+Idle timeout: 900 seconds
