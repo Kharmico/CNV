@@ -37,7 +37,7 @@ public class WebServer {
                 
                 String[] tokens = response.split("[&=]");
                 String filename = tokens[1];
-                String dir=System.getProperty("user.dir");
+                String dir=System.getProperty("user.dir") + "/info";
                 String file=dir+File.separator+filename;
                 System.out.println("file: "+file);
                 String output=dir+File.separator+"testSheng.bmp";

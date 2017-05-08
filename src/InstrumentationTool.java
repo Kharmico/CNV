@@ -41,14 +41,17 @@ public class InstrumentationTool {
                 // see java.util.Enumeration for more information on Enumeration class
                 for (Enumeration e = ci.getRoutines().elements(); e.hasMoreElements(); ) {
                     Routine routine = (Routine) e.nextElement();
-					routine.addBefore("InstrumentationTool", "mcount", new Integer(1));
+                    if(routine.getMethodName().equals("draw"))
+                    	routine.addAfter("InstrumentationTool", "printInstrumentationTool", new Integer(1));
+                    else 
+                    	routine.addBefore("InstrumentationTool", "mcount", new Integer(1));
                     
                     for (Enumeration b = routine.getBasicBlocks().elements(); b.hasMoreElements(); ) {
                         BasicBlock bb = (BasicBlock) b.nextElement();
                         bb.addBefore("InstrumentationTool", "count", new Integer(bb.size()));
                     }
                 }
-                ci.addAfter("InstrumentationTool", "printInstrumentationTool", ci.getClassName());
+//                ci.addAfter("InstrumentationTool", "printInstrumentationTool", ci.getClassName());
                 ci.write(argv[1] + System.getProperty("file.separator") + infilename);
             }
         }
@@ -56,22 +59,32 @@ public class InstrumentationTool {
 	
 	// Outputs the metrics to a log file!
 	// logfile->  Thread: # | Instructions: # | Blocks: # | Methods: #
-	public static synchronized void printInstrumentationTool(String foo) {
+	public static synchronized void printInstrumentationTool(int incr) {
 		Charset utf8 = StandardCharsets.UTF_8;
+		long threadId = Thread.currentThread().getId();
 		List<String> loggerAux = new ArrayList<String>();
+		Metrics metric;
+		
+		if(!metricsPerThread.containsKey(threadId))
+    		metric = new Metrics(0,0,1);
+    	else {
+    		metric = metricsPerThread.get(threadId);
+    		metric.m_count++;
+    	}
+    	metricsPerThread.put(threadId, metric);
 		
 		for(Map.Entry<Long,Metrics> entries : metricsPerThread.entrySet()) {
-			long threadId = entries.getKey();
-			Metrics stuff = entries.getValue();
-			int in_count = stuff.i_count;
-			int bb_count = stuff.b_count;
-			int me_count = stuff.m_count;
+			threadId = entries.getKey();
+			metric = entries.getValue();
+			int in_count = metric.i_count;
+			int bb_count = metric.b_count;
+			int me_count = metric.m_count;
 			String aux = "Thread: " + String.valueOf(threadId) + " | Instructions: " + String.valueOf(in_count) + 
 					" | Blocks: " + String.valueOf(bb_count) + " | Methods: " + String.valueOf(me_count);
 			loggerAux.add(aux);
 		}
 		try {
-			Files.write(Paths.get("log.txt"), loggerAux, utf8, APPEND);
+			Files.write(Paths.get("log.txt"), loggerAux, utf8, CREATE, APPEND);
 		} catch (IOException e) {
 			System.out.println("Something went wrong with the logger!!!");
 		}
