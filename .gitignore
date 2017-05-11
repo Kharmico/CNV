@@ -1,7 +1,7 @@
 .class
-*.class
 .classpath
 .project
 .settings/
 .idea
 .eclipse
+.bmp
