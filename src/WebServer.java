@@ -20,7 +20,7 @@ public class WebServer {
 	
     public static void main(String[] args) throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress(8000), 0);
-        executor = Executors.newFixedThreadPool(5);
+        executor = Executors.newFixedThreadPool(10);
         server.createContext("/r.html", new MyHandler());
         server.setExecutor(executor); // creates a default executor
         server.start();
@@ -33,14 +33,15 @@ public class WebServer {
             String response = t.getRequestURI().getQuery();
             if(response!=null){
 
-                String outputfile = String.valueOf(System.currentTimeMillis())+".bmp";
+                
                 
                 String[] tokens = response.split("[&=]");
                 String filename = tokens[1];
                 String dir=System.getProperty("user.dir") + "/info";
                 String file=dir+File.separator+filename;
                 System.out.println("file: "+file);
-                String output=dir+File.separator+"testSheng.bmp";
+                String outputfile = String.valueOf(System.currentTimeMillis())+".bmp";
+                
                 int scols = Integer.parseInt(tokens[3]);
                 int srows = Integer.parseInt(tokens[5]);
                 int wcols = Integer.parseInt(tokens[7]);
@@ -49,18 +50,17 @@ public class WebServer {
                 int roff = Integer.parseInt(tokens[13]);
                 
                 File inputfilename = new File(file);
-                File outputfilename = new File(output);
+                File outputfilename = new File(outputfile);
                 if(inputfilename.exists() && !inputfilename.isDirectory()) { 
                     System.out.println("There is "+inputfilename);
                 }
                 try {
         		RayTracer rayTracer = new RayTracer(scols, srows, wcols, wrows, coff, roff);
         		rayTracer.readScene(inputfilename);
-        		
-    				rayTracer.draw(outputfilename);
+        		rayTracer.draw(outputfilename);
     			} catch (Exception e) {
                     e.printStackTrace();
-    				System.out.println("Bad stuff happened here!!!");
+    				System.out.println("Error while accessing RayTracer methods");
     			}
         		
         		Path pathToFile = Paths.get(outputfilename.getAbsolutePath());
@@ -71,11 +71,10 @@ public class WebServer {
                 t.sendResponseHeaders(200, fileContent.length);
                 OutputStream os = t.getResponseBody();
                 long threadId = Thread.currentThread().getId();
-                System.out.println(threadId);
+                System.out.println("Thread finished execution: " + threadId);
                 os.write(fileContent);
                 os.close();
             }else{
-
                 t.sendResponseHeaders(200, "health check".length());
                 OutputStream os= t.getResponseBody();
                 os.write("health check".getBytes());
