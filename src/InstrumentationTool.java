@@ -85,8 +85,8 @@ public class InstrumentationTool {
 
             // Create a table with a primary hash key named 'name', which holds a string
             CreateTableRequest createTableRequest = new CreateTableRequest().withTableName(tableName)
-                .withKeySchema(new KeySchemaElement().withAttributeName("ip").withKeyType(KeyType.HASH))
-                .withAttributeDefinitions(new AttributeDefinition().withAttributeName("ip").withAttributeType(ScalarAttributeType.S))
+                .withKeySchema(new KeySchemaElement().withAttributeName("ipaddr").withKeyType(KeyType.HASH))
+                .withAttributeDefinitions(new AttributeDefinition().withAttributeName("ipaddr").withAttributeType(ScalarAttributeType.S))
                 .withProvisionedThroughput(new ProvisionedThroughput().withReadCapacityUnits(10L).withWriteCapacityUnits(10L));
 
             // Create table if it does not exist yet
@@ -195,16 +195,9 @@ public class InstrumentationTool {
 	
 	// Outputs the metrics to a log file!
 	// logfile->  Thread: # | Methods: # | Blocks: # | Instructions: # | FieldAccess: # | MemAccess: #
-	public static synchronized void metricStorage(String empty) {
+	public static synchronized void metricStorage(String empty) throws UnknownHostException {
 		long threadId = Thread.currentThread().getId();
-		String ipaddr = null;
-		
-		try {
-                    ipaddr = String.valueOf(InetAddress.getLocalHost());
-		} catch (UnknownHostException uhe) {
-                    System.out.println("Problem getting IP Address!");
-                    System.out.println("Error Message: " + uhe.getMessage());
-		}
+		InetAddress ipaddr = InetAddress.getLocalHost();
 		
 		Metrics metric;
 		
@@ -214,14 +207,16 @@ public class InstrumentationTool {
 			
 			try {
 				Map<String, AttributeValue> item = new HashMap<String, AttributeValue>();
-		        item.put("ip", new AttributeValue(ipaddr));
+		        item.put("ipaddr", new AttributeValue(ipaddr.getCanonicalHostName()));
 		        item.put("threadId", new AttributeValue(String.valueOf(threadId)));
-		        item.put("method", new AttributeValue().withN(Integer.toString(metric.method_count)));
-		        item.put("bb", new AttributeValue().withN(Integer.toString(metric.bb_count)));
-		        item.put("instr", new AttributeValue().withN(Integer.toString(metric.instr_count)));
-		        item.put("fieldaccess", new AttributeValue().withN(Integer.toString(metric.fieldaccess_count)));
-		        item.put("memaccess", new AttributeValue().withN(Integer.toString(metric.memaccess_count)));
+		        item.put("method", new AttributeValue(String.valueOf(metric.method_count)));
+		        item.put("bb", new AttributeValue(String.valueOf(metric.bb_count)));
+		        item.put("instr", new AttributeValue(String.valueOf(metric.instr_count)));
+		        item.put("fieldaccess", new AttributeValue(String.valueOf(metric.fieldaccess_count)));
+		        item.put("memaccess", new AttributeValue(String.valueOf(metric.memaccess_count)));
 				
+		        System.out.println("TABLENAME: " + tableName);
+		        System.out.println("ITEM INFO: " + item);
 		        PutItemRequest putItemRequest = new PutItemRequest(tableName, item);
 		        PutItemResult putItemResult = dynamoDB.putItem(putItemRequest);
 		        System.out.println("Result: " + putItemResult);
