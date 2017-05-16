@@ -1,5 +1,6 @@
 import BIT.highBIT.*;
 import java.io.*;
+import java.net.InetAddress;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -7,10 +8,35 @@ import java.nio.file.Paths;
 import static java.nio.file.StandardOpenOption.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.net.UnknownHostException;
+import com.amazonaws.AmazonClientException;
+import com.amazonaws.AmazonServiceException;
+import com.amazonaws.auth.AWSCredentials;
+import com.amazonaws.auth.profile.ProfileCredentialsProvider;
+import com.amazonaws.regions.Region;
+import com.amazonaws.regions.Regions;
+import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient;
+import com.amazonaws.services.dynamodbv2.model.AttributeDefinition;
+import com.amazonaws.services.dynamodbv2.model.AttributeValue;
+import com.amazonaws.services.dynamodbv2.model.ComparisonOperator;
+import com.amazonaws.services.dynamodbv2.model.Condition;
+import com.amazonaws.services.dynamodbv2.model.CreateTableRequest;
+import com.amazonaws.services.dynamodbv2.model.DescribeTableRequest;
+import com.amazonaws.services.dynamodbv2.model.KeySchemaElement;
+import com.amazonaws.services.dynamodbv2.model.KeyType;
+import com.amazonaws.services.dynamodbv2.model.ProvisionedThroughput;
+import com.amazonaws.services.dynamodbv2.model.PutItemRequest;
+import com.amazonaws.services.dynamodbv2.model.PutItemResult;
+import com.amazonaws.services.dynamodbv2.model.ScalarAttributeType;
+import com.amazonaws.services.dynamodbv2.model.ScanRequest;
+import com.amazonaws.services.dynamodbv2.model.ScanResult;
+import com.amazonaws.services.dynamodbv2.model.TableDescription;
+import com.amazonaws.services.dynamodbv2.util.TableUtils;
 
 
 public class InstrumentationTool {
-	private static PrintStream out = null;
+        private static final String tableName = "RTMetrics";
+	private static AmazonDynamoDBClient dynamoDB = null;
 	private static ConcurrentHashMap<Long, Metrics> metricsPerThread = new ConcurrentHashMap<Long, Metrics>();
 
 	// Class where to save the metrics counted and then save on DynamoDB
@@ -41,6 +67,51 @@ public class InstrumentationTool {
         BasicBlock bb;
         Instruction instr;
         
+        AWSCredentials credentials = null;
+        try {
+            credentials = new ProfileCredentialsProvider().getCredentials();
+        } catch (Exception e) {
+            throw new AmazonClientException(
+                    "Cannot load the credentials from the credential profiles file. " +
+                    "Please make sure that your credentials file is at the correct " +
+                    "location (~/.aws/credentials), and is in valid format.",
+                    e);
+        }
+        dynamoDB = new AmazonDynamoDBClient(credentials);
+        Region euWest2 = Region.getRegion(Regions.EU_WEST_2);
+        dynamoDB.setRegion(euWest2);
+        
+        try {
+
+            // Create a table with a primary hash key named 'name', which holds a string
+            CreateTableRequest createTableRequest = new CreateTableRequest().withTableName(tableName)
+                .withKeySchema(new KeySchemaElement().withAttributeName("ip").withKeyType(KeyType.HASH))
+                .withAttributeDefinitions(new AttributeDefinition().withAttributeName("ip").withAttributeType(ScalarAttributeType.S))
+                .withProvisionedThroughput(new ProvisionedThroughput().withReadCapacityUnits(10L).withWriteCapacityUnits(10L));
+
+            // Create table if it does not exist yet
+            TableUtils.createTableIfNotExists(dynamoDB, createTableRequest);
+            // wait for the table to move into ACTIVE state
+            TableUtils.waitUntilActive(dynamoDB, tableName);
+            
+        } catch (AmazonServiceException ase) {
+            System.out.println("Caught an AmazonServiceException, which means your request made it "
+                    + "to AWS, but was rejected with an error response for some reason.");
+            System.out.println("Error Message:    " + ase.getMessage());
+            System.out.println("HTTP Status Code: " + ase.getStatusCode());
+            System.out.println("AWS Error Code:   " + ase.getErrorCode());
+            System.out.println("Error Type:       " + ase.getErrorType());
+            System.out.println("Request ID:       " + ase.getRequestId());
+        } catch (AmazonClientException ace) {
+            System.out.println("Caught an AmazonClientException, which means the client encountered "
+                    + "a serious internal problem while trying to communicate with AWS, "
+                    + "such as not being able to access the network.");
+            System.out.println("Error Message: " + ace.getMessage());
+        } catch (InterruptedException inte) {
+            System.out.println("An Interrupted Exception was caught!");
+            System.out.println("Error Message: " + inte.getMessage());
+        }
+        
         
         if(infilename.endsWith(".class")) {
         	// Create class info object
@@ -51,12 +122,12 @@ public class InstrumentationTool {
         		routine = (Routine) methods.nextElement();
         		
         		if(routine.getMethodName().equals("<init>") || routine.getMethodName().equals("<clinit>"))
-        			routine.addBefore("InstrumentationToo", "metricinit", "");
+        			routine.addBefore("InstrumentationTool", "metricinit", "");
         		
         		if(routine.getMethodName().equals("readScene") || routine.getMethodName().equals("draw")) {
         			routine.addBefore("InstrumentationTool", "methodcount", new Integer(1));
         			
-        			for(Enumeration blocks = routine.getBasicBlocks().elements(); blocks.hasMoreElements()) {
+        			for(Enumeration blocks = routine.getBasicBlocks().elements(); blocks.hasMoreElements(); ) {
             			bb = (BasicBlock) blocks.nextElement();
             			bb.addBefore("InstrumentationTool", "bbcount", new Integer(bb.size()));
             		}
@@ -125,34 +196,52 @@ public class InstrumentationTool {
 	// Outputs the metrics to a log file!
 	// logfile->  Thread: # | Methods: # | Blocks: # | Instructions: # | FieldAccess: # | MemAccess: #
 	public static synchronized void metricStorage(String empty) {
-		Charset utf8 = StandardCharsets.UTF_8;
 		long threadId = Thread.currentThread().getId();
-		List<String> loggerAux = new ArrayList<String>();
+		String ipaddr = null;
+		
+		try {
+                    ipaddr = String.valueOf(InetAddress.getLocalHost());
+		} catch (UnknownHostException uhe) {
+                    System.out.println("Problem getting IP Address!");
+                    System.out.println("Error Message: " + uhe.getMessage());
+		}
+		
 		Metrics metric;
 		
 		for(Map.Entry<Long,Metrics> entries : metricsPerThread.entrySet()) {
 			threadId = entries.getKey();
 			metric = entries.getValue();
-			int method_count = metric.method_count;
-			int bb_count = metric.bb_count;
-			int instr_count = metric.instr_count;
-			int fieldaccess_count = metric.fieldaccess_count;
-			int memaccess_count = metric.memaccess_count;
+			
+			try {
+				Map<String, AttributeValue> item = new HashMap<String, AttributeValue>();
+		        item.put("ip", new AttributeValue(ipaddr));
+		        item.put("threadId", new AttributeValue(String.valueOf(threadId)));
+		        item.put("method", new AttributeValue().withN(Integer.toString(metric.method_count)));
+		        item.put("bb", new AttributeValue().withN(Integer.toString(metric.bb_count)));
+		        item.put("instr", new AttributeValue().withN(Integer.toString(metric.instr_count)));
+		        item.put("fieldaccess", new AttributeValue().withN(Integer.toString(metric.fieldaccess_count)));
+		        item.put("memaccess", new AttributeValue().withN(Integer.toString(metric.memaccess_count)));
+				
+		        PutItemRequest putItemRequest = new PutItemRequest(tableName, item);
+		        PutItemResult putItemResult = dynamoDB.putItem(putItemRequest);
+		        System.out.println("Result: " + putItemResult);
+				
+			} catch (AmazonServiceException ase) {
+		        System.out.println("Caught an AmazonServiceException, which means your request made it "
+		                + "to AWS, but was rejected with an error response for some reason.");
+		        System.out.println("Error Message:    " + ase.getMessage());
+		        System.out.println("HTTP Status Code: " + ase.getStatusCode());
+		        System.out.println("AWS Error Code:   " + ase.getErrorCode());
+		        System.out.println("Error Type:       " + ase.getErrorType());
+		        System.out.println("Request ID:       " + ase.getRequestId());
+		    } catch (AmazonClientException ace) {
+		        System.out.println("Caught an AmazonClientException, which means the client encountered "
+		                + "a serious internal problem while trying to communicate with AWS, "
+		                + "such as not being able to access the network.");
+		        System.out.println("Error Message: " + ace.getMessage());
+		    }
 
-			String aux = "Thread: " + String.valueOf(threadId) + " | Methods: " + String.valueOf(method_count) + 
-					" | Blocks: " + String.valueOf(bb_count) + " | Instructions: " + String.valueOf(instr_count) + 
-					" | FieldAccess: " + String.valueOf(fieldaccess_count) + " | MemAccess: " + String.valueOf(memaccess_count);
-			loggerAux.add(aux);
 		}
-		try {
-			Files.write(Paths.get("log.txt"), loggerAux, utf8, CREATE);
-		} catch (IOException e) {
-			System.out.println("Something went wrong with the logger!!!");
-		}
 
-    }
-    
-
-    
-    
+    }   
 }
