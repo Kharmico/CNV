@@ -56,6 +56,7 @@ public class LoadBalancer {
 	}
 	
     public static void main(String[] args) throws Exception {
+    	init();
         HttpServer server = HttpServer.create(new InetSocketAddress(8000), 0);
         executor = Executors.newFixedThreadPool(10);
         server.createContext("/r.html", new MyHandler());
