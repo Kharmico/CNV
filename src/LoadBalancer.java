@@ -4,6 +4,7 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
 import java.net.URL;
+import java.net.URLConnection;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -11,6 +12,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutorService;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Scanner;
 import java.util.Set;
 import com.amazonaws.AmazonClientException;
 import com.amazonaws.AmazonServiceException;
@@ -72,9 +74,8 @@ public class LoadBalancer {
         @Override
         public void handle(HttpExchange t) throws IOException {
             
-            String response = t.getRequestURI().getQuery();
-            if(response!=null){
-            	String outputfile = String.valueOf(System.currentTimeMillis())+".bmp";
+            String requestToSend = t.getRequestURI().getQuery();
+            if(requestToSend!=null){
                 DescribeInstancesResult describeInstancesRequest = ec2.describeInstances();
                 List<Reservation> reservations = describeInstancesRequest.getReservations();
                 Set<Instance> instances = new HashSet<Instance>();
@@ -85,21 +86,24 @@ public class LoadBalancer {
                 			instances.add(testing);
                 }
                 System.out.println("You have " + instances.size() + " Amazon EC2 instance(s) running.");
-                System.out.println(response);
+                System.out.println(requestToSend);
                 for(Instance instan : instances) {
-                	String queryToSend = instan.getPublicIpAddress() + ":8000/r.html?" + response;
-                	URL obj = new URL(queryToSend);
+                	String response = "";
+                	URL url = new URL("http://" + instan.getPublicIpAddress() + ":8000/r.html?" + requestToSend);
+                	URLConnection conn = url.openConnection();
+                	Scanner scan = new Scanner(conn.getInputStream());
                 	
-                	HttpURLConnection conn = (HttpURLConnection) obj.openConnection();
-                	String stuff = conn.getResponseMessage();
-                	t.getResponseHeaders().add("Content-Disposition", "attachment; filename=" + outputfile);    		
-            		
-                    t.sendResponseHeaders(200, stuff.length());
-                    OutputStream os = t.getResponseBody();
-                    long threadId = Thread.currentThread().getId();
-                    System.out.println("Thread finished execution in LB!!!: " + threadId);
-                    os.write(stuff.getBytes());
+                	while(scan.hasNext()) {
+                		response += scan.next() + " ";
+                	}
+                	scan.close();
+                	
+                	t.sendResponseHeaders(200, response.length());
+           		 	OutputStream os = t.getResponseBody();
+                    os.write(response.getBytes());
                     os.close();
+//                	String queryToSend = "http://" + instan.getPublicIpAddress() + ":8000/r.html?" + response;
+
                 }
                 
                 
