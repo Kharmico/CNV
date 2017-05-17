@@ -36,7 +36,6 @@ import com.amazonaws.services.dynamodbv2.util.TableUtils;
 
 public class InstrumentationTool {
 	private static final String tableName = "RTMetrics";
-	private static AmazonDynamoDBClient dynamoDB = null;
 	private static ConcurrentHashMap<Long, Metrics> metricsPerThread = new ConcurrentHashMap<Long, Metrics>();
 
 	// Class where to save the metrics counted and then save on DynamoDB
@@ -77,7 +76,7 @@ public class InstrumentationTool {
                     "location (~/.aws/credentials), and is in valid format.",
                     e);
         }
-        dynamoDB = new AmazonDynamoDBClient(credentials);
+        AmazonDynamoDBClient dynamoDB = new AmazonDynamoDBClient(credentials);
         Region euWest2 = Region.getRegion(Regions.EU_WEST_2);
         dynamoDB.setRegion(euWest2);
         
@@ -146,7 +145,7 @@ public class InstrumentationTool {
         		}
         		
         		if(routine.getMethodName().equals("draw")) {
-        			routine.addAfter("InstrumentationTool", "metricStorage", "");
+        			routine.addAfter("InstrumentationTool", "metricStorage", dynamoDB);
         		}
         	}
         	ci.write(outfilename);
@@ -195,7 +194,7 @@ public class InstrumentationTool {
 	
 	// Outputs the metrics to a log file!
 	// logfile->  Thread: # | Methods: # | Blocks: # | Instructions: # | FieldAccess: # | MemAccess: #
-	public static synchronized void metricStorage(String empty) throws UnknownHostException {
+	public static synchronized void metricStorage(AmazonDynamoDBClient dynamoDB) throws UnknownHostException {
 		long threadId = Thread.currentThread().getId();
 		InetAddress ipaddr = InetAddress.getLocalHost();
 		
