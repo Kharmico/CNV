@@ -227,15 +227,8 @@ public class InstrumentationTool {
 		        item.put("instr", new AttributeValue(String.valueOf(metric.instr_count)));
 		        item.put("fieldaccess", new AttributeValue(String.valueOf(metric.fieldaccess_count)));
 		        item.put("memaccess", new AttributeValue(String.valueOf(metric.memaccess_count)));
-				
-		        System.out.println("TABLENAME: " + tableName);
-		        System.out.println("ITEM INFO: " + item);
 		        PutItemRequest putItemRequest = new PutItemRequest(tableName, item);
-		        System.out.println("REQUEST RECEIVED INFO: " + putItemRequest);
-		        System.out.println("DYNAMODBINFO: " + dynamoDB);
-		        PutItemResult putItemResult = dynamoDB.putItem(putItemRequest);
-		        System.out.println("Result: " + putItemResult);
-				
+		        PutItemResult putItemResult = dynamoDB.putItem(putItemRequest);	
 			} catch (AmazonServiceException ase) {
 		        System.out.println("Caught an AmazonServiceException, which means your request made it "
 		                + "to AWS, but was rejected with an error response for some reason.");
