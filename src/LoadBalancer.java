@@ -97,8 +97,7 @@ public class LoadBalancer {
                 		response += scan.nextByte();
                 	}
                 	scan.close();
-                	
-                	t.getResponseHeaders().add("Content-Disposition", "attachment; filename=" + outputfile);
+
                 	t.sendResponseHeaders(200, response.length());
            		 	OutputStream os = t.getResponseBody();
                     os.write(response.getBytes());
