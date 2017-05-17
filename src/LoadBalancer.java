@@ -93,8 +93,8 @@ public class LoadBalancer {
                 	URLConnection conn = url.openConnection();
                 	Scanner scan = new Scanner(conn.getInputStream());
                 	
-                	while(scan.hasNext()) {
-                		response += scan.next() + " ";
+                	while(scan.hasNextByte()) {
+                		response += scan.nextByte();
                 	}
                 	scan.close();
                 	
