@@ -73,23 +73,10 @@ public class LoadBalancer {
     static class MyHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange t) throws IOException {
-            String requestToSend = t.getRequestURI().getQuery();
-            if(requestToSend!=null){
-                DescribeInstancesResult describeInstancesRequest = ec2.describeInstances();
-                List<Reservation> reservations = describeInstancesRequest.getReservations();
-                Set<Instance> instances = new HashSet<Instance>();
-                
-                for (Reservation reservation : reservations) {
-                	for (Instance testing : reservation.getInstances())
-                		if(testing.getState().getName().equalsIgnoreCase(InstanceStateName.Running.name()))
-                			instances.add(testing);
-                }
-                System.out.println("You have " + instances.size() + " Amazon EC2 instance(s) running.");
-                System.out.println(requestToSend);
-                for(Instance instan : instances) {
-                	
-                	System.out.println("rerout request to " + instan.getPublicIpAddress());
-            		URL url = new URL(String.format("http://%s:%s%s?%s", instan.getPublicIpAddress(), "8000", "/r.html",
+                System.out.println("GOT A REQUEST BRAH!!!");
+
+                	System.out.println("rerout request to someplace");
+            		URL url = new URL(String.format("http://%s:%s%s?%s", "ec2-52-56-238-133.eu-west-2.compute.amazonaws.com", "8000", "/r.html",
             				t.getRequestURI().getQuery()));
             		System.out.println("url " + url.toString());
             		HttpURLConnection connection = (HttpURLConnection) url.openConnection();
@@ -109,16 +96,7 @@ public class LoadBalancer {
             		OutputStream os = t.getResponseBody();
             		os.write(response.getBytes());
             		os.close();
-            		System.out.println("rerout request from " + instan.getPublicIpAddress());
-                }
-
-                
-            }else{
-                t.sendResponseHeaders(200, "LoadBalancer Health Check".length());
-                OutputStream os= t.getResponseBody();
-                os.write("health check".getBytes());
-                os.close();
-            }
+            		System.out.println("rerout request from CLIENT!");
         }
     }
 }
