@@ -18,6 +18,7 @@ import com.amazonaws.auth.profile.ProfileCredentialsProvider;
 import com.amazonaws.services.ec2.AmazonEC2;
 import com.amazonaws.services.ec2.AmazonEC2ClientBuilder;
 import com.amazonaws.services.ec2.model.TerminateInstancesRequest;
+import com.amazonaws.services.elasticmapreduce.model.InstanceState;
 import com.amazonaws.services.ec2.model.DescribeInstancesResult;
 import com.amazonaws.services.ec2.model.RunInstancesRequest;
 import com.amazonaws.services.ec2.model.RunInstancesResult;
@@ -81,7 +82,7 @@ public class LoadBalancer {
                 
                 for (Reservation reservation : reservations) {
                 	for (Instance testing : reservation.getInstances())
-                		if(testing.getState().equals(InstanceStateName.Running))
+                		if(testing.getState().equals(InstanceState.RUNNING))
                 			instances.add(testing);
                 }
 
