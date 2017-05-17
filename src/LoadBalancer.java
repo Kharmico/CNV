@@ -82,7 +82,7 @@ public class LoadBalancer {
                 
                 for (Reservation reservation : reservations) {
                 	for (Instance testing : reservation.getInstances())
-                		if(testing.getState().getName().equals(InstanceStateName.Running.name()))
+                		if(testing.getState().getName().equalsIgnoreCase(InstanceStateName.Running.name()))
                 			instances.add(testing);
                 }
 
