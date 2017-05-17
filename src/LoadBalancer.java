@@ -97,6 +97,7 @@ public class LoadBalancer {
             		OutputStream os = t.getResponseBody();
             		System.out.println("AFTER OS WAS CREATED!!!");
             		byte[] arrayBytes = response.getBytes();
+            		System.out.println("TURNED RESPONSE TO A BYTE ARRAY!!!: " + arrayBytes);
             		os.write(arrayBytes);
             		System.out.println("AFTER WRITE AND BEFORE CLOSE!!!");
             		os.close();
