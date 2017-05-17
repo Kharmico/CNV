@@ -85,9 +85,9 @@ public class LoadBalancer {
                 			instances.add(testing);
                 }
                 System.out.println("You have " + instances.size() + " Amazon EC2 instance(s) running.");
-                
+                System.out.println(response);
                 for(Instance instan : instances) {
-                	String queryToSend = instan.getPublicIpAddress() + ":8000/r.html";
+                	String queryToSend = instan.getPublicIpAddress() + ":8080/r.html";
                 	URL obj = new URL(queryToSend);
                 	
                 	HttpURLConnection conn = (HttpURLConnection) obj.openConnection();
