@@ -207,6 +207,7 @@ public class InstrumentationTool {
 			
 			try {
 				Map<String, AttributeValue> item = new HashMap<String, AttributeValue>();
+				
 		        item.put("ipaddr", new AttributeValue(ipaddr.getCanonicalHostName()));
 		        item.put("threadId", new AttributeValue(String.valueOf(threadId)));
 		        item.put("method", new AttributeValue(String.valueOf(metric.method_count)));
@@ -218,6 +219,7 @@ public class InstrumentationTool {
 		        System.out.println("TABLENAME: " + tableName);
 		        System.out.println("ITEM INFO: " + item);
 		        PutItemRequest putItemRequest = new PutItemRequest(tableName, item);
+		        System.out.println("REQUEST RECEIVED INFO" + putItemRequest);
 		        PutItemResult putItemResult = dynamoDB.putItem(putItemRequest);
 		        System.out.println("Result: " + putItemResult);
 				
