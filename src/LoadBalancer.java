@@ -73,7 +73,7 @@ public class LoadBalancer {
     static class MyHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange t) throws IOException {
-            
+        	String outputfile = String.valueOf(System.currentTimeMillis())+".bmp";
             String requestToSend = t.getRequestURI().getQuery();
             if(requestToSend!=null){
                 DescribeInstancesResult describeInstancesRequest = ec2.describeInstances();
@@ -98,6 +98,7 @@ public class LoadBalancer {
                 	}
                 	scan.close();
                 	
+                	t.getResponseHeaders().add("Content-Disposition", "attachment; filename=" + outputfile);
                 	t.sendResponseHeaders(200, response.length());
            		 	OutputStream os = t.getResponseBody();
                     os.write(response.getBytes());
