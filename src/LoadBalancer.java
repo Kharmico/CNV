@@ -100,10 +100,14 @@ public class LoadBalancer {
             		String response = "";
             		System.out.println("RECEIVED RESPONSE FROM WEBSERVER!");
             		while (s.hasNext()) {
+            			System.out.println("DOING SOME SCANNING!!!");
             			response += s.next() + " ";
             		}
             		s.close();
-
+            		
+            		System.out.println(response);
+            		System.out.println("AFTER SCANNING WAS DONE!!!!!!");
+            		
             		t.sendResponseHeaders(200, response.length());
             		OutputStream os = t.getResponseBody();
             		os.write(response.getBytes());
