@@ -61,7 +61,7 @@ public class LoadBalancer {
 	
     public static void main(String[] args) throws Exception {
     	init();
-        HttpServer server = HttpServer.create(new InetSocketAddress(8000), 0);
+        HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
         executor = Executors.newFixedThreadPool(10);
         server.createContext("/r.html", new MyHandler());
         server.setExecutor(executor); // creates a default executor
@@ -87,10 +87,19 @@ public class LoadBalancer {
                 System.out.println("You have " + instances.size() + " Amazon EC2 instance(s) running.");
                 System.out.println(response);
                 for(Instance instan : instances) {
-                	String queryToSend = instan.getPublicIpAddress() + ":8080/r.html?" + response;
+                	String queryToSend = instan.getPublicIpAddress() + ":8000/r.html?" + response;
                 	URL obj = new URL(queryToSend);
                 	
                 	HttpURLConnection conn = (HttpURLConnection) obj.openConnection();
+                	String stuff = conn.getResponseMessage();
+                	t.getResponseHeaders().add("Content-Disposition", "attachment; filename=");    		
+            		
+                    t.sendResponseHeaders(200, stuff.length());
+                    OutputStream os = t.getResponseBody();
+                    long threadId = Thread.currentThread().getId();
+                    System.out.println("Thread finished execution: " + threadId);
+                    os.write(stuff.getBytes());
+                    os.close();
                 }
                 
                 
