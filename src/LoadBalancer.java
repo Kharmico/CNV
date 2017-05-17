@@ -73,7 +73,6 @@ public class LoadBalancer {
     static class MyHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange t) throws IOException {
-        	String outputfile = String.valueOf(System.currentTimeMillis())+".bmp";
             String requestToSend = t.getRequestURI().getQuery();
             if(requestToSend!=null){
                 DescribeInstancesResult describeInstancesRequest = ec2.describeInstances();
@@ -91,6 +90,9 @@ public class LoadBalancer {
                 	String response = "";
                 	URL url = new URL("http://" + instan.getPublicIpAddress() + ":8000/r.html?" + requestToSend);
                 	URLConnection conn = url.openConnection();
+                	conn.setDoInput(true);
+                	conn.setDoOutput(true);
+                	conn.setReadTimeout(1000*60*10);
                 	Scanner scan = new Scanner(conn.getInputStream());
                 	
                 	System.out.println("RECEIVED RESPONSE FROM WEBSERVER!");
@@ -98,15 +100,13 @@ public class LoadBalancer {
                 		response += scan.next() + " ";
                 	}
                 	scan.close();
-                	
+
                 	System.out.println("REDIRECTING BACK TO CLIENT!");
                 	t.sendResponseHeaders(200, response.length());
            		 	OutputStream os = t.getResponseBody();
                     os.write(response.getBytes());
                     os.close();
                     System.out.println("REDIRECTION COMPLETED!");
-//                	String queryToSend = "http://" + instan.getPublicIpAddress() + ":8000/r.html?" + response;
-
                 }
 
                 
