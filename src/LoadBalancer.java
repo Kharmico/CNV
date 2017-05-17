@@ -87,7 +87,7 @@ public class LoadBalancer {
             		String response = "";
             		System.out.println("RECEIVED RESPONSE FROM WEBSERVER!");
             		while (s.hasNext()) {
-            			response += s.next();
+            			response += s.next() + " ";
             		}
             		s.close();
             		System.out.println("AFTER SCANNING WAS DONE!!!!!!");
