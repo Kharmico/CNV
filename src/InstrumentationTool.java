@@ -145,7 +145,7 @@ public class InstrumentationTool {
         		}
         		
         		if(routine.getMethodName().equals("draw")) {
-        			routine.addAfter("InstrumentationTool", "metricStorage", dynamoDB);
+        			routine.addAfter("InstrumentationTool", "metricStorage", "");
         		}
         	}
         	ci.write(outfilename);
@@ -194,11 +194,24 @@ public class InstrumentationTool {
 	
 	// Outputs the metrics to a log file!
 	// logfile->  Thread: # | Methods: # | Blocks: # | Instructions: # | FieldAccess: # | MemAccess: #
-	public static synchronized void metricStorage(AmazonDynamoDBClient dynamoDB) throws UnknownHostException {
+	public static synchronized void metricStorage(String empty) throws UnknownHostException {
 		long threadId = Thread.currentThread().getId();
 		InetAddress ipaddr = InetAddress.getLocalHost();
-		
 		Metrics metric;
+		
+        AWSCredentials credentials = null;
+        try {
+            credentials = new ProfileCredentialsProvider().getCredentials();
+        } catch (Exception e) {
+            throw new AmazonClientException(
+                    "Cannot load the credentials from the credential profiles file. " +
+                    "Please make sure that your credentials file is at the correct " +
+                    "location (~/.aws/credentials), and is in valid format.",
+                    e);
+        }
+        AmazonDynamoDBClient dynamoDB = new AmazonDynamoDBClient(credentials);
+        Region euWest2 = Region.getRegion(Regions.EU_WEST_2);
+        dynamoDB.setRegion(euWest2);
 		
 		for(Map.Entry<Long,Metrics> entries : metricsPerThread.entrySet()) {
 			threadId = entries.getKey();
