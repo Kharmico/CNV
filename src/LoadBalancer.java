@@ -74,7 +74,7 @@ public class LoadBalancer {
             
             String response = t.getRequestURI().getQuery();
             if(response!=null){
-            	
+            	String outputfile = String.valueOf(System.currentTimeMillis())+".bmp";
                 DescribeInstancesResult describeInstancesRequest = ec2.describeInstances();
                 List<Reservation> reservations = describeInstancesRequest.getReservations();
                 Set<Instance> instances = new HashSet<Instance>();
@@ -92,12 +92,12 @@ public class LoadBalancer {
                 	
                 	HttpURLConnection conn = (HttpURLConnection) obj.openConnection();
                 	String stuff = conn.getResponseMessage();
-                	t.getResponseHeaders().add("Content-Disposition", "attachment; filename=");    		
+                	t.getResponseHeaders().add("Content-Disposition", "attachment; filename=" + outputfile);    		
             		
                     t.sendResponseHeaders(200, stuff.length());
                     OutputStream os = t.getResponseBody();
                     long threadId = Thread.currentThread().getId();
-                    System.out.println("Thread finished execution: " + threadId);
+                    System.out.println("Thread finished execution in LB!!!: " + threadId);
                     os.write(stuff.getBytes());
                     os.close();
                 }
