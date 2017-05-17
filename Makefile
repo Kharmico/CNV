@@ -10,8 +10,6 @@ all:
 	$(JAVA) -cp "bin:third-party:third-party/*" InstrumentationTool bin2/raytracer/RayTracer.class bin/raytracer/RayTracer.class
 
 	rsync -av bin2/* bin/ --exclude RayTracer.class
-	cp info/*.txt bin/
-	cp info/*.bmp bin/
 	
 	$(JAVAC) $(JFLAGS) bin -classpath bin:third-party:. src/WebServer.java
 	$(JAVA) -cp "bin:third-party:third-party/*" -XX:-UseSplitVerifier WebServer

@@ -1,10 +1,8 @@
-.class
 *.class
+*.bmp
 .classpath
 .project
 .settings/
 .idea
 .eclipse
-.bmp
-*.bmp
-bin/*
+bin/

@@ -75,7 +75,7 @@ public class WebServer {
                 os.write(fileContent);
                 os.close();
             }else{
-                t.sendResponseHeaders(200, "health check".length());
+                t.sendResponseHeaders(200, "WebServer Health Check".length());
                 OutputStream os= t.getResponseBody();
                 os.write("health check".getBytes());
                 os.close();
