@@ -22,6 +22,7 @@ import com.amazonaws.services.ec2.model.DescribeInstancesResult;
 import com.amazonaws.services.ec2.model.RunInstancesRequest;
 import com.amazonaws.services.ec2.model.RunInstancesResult;
 import com.amazonaws.services.ec2.model.Instance;
+import com.amazonaws.services.ec2.model.InstanceStateName;
 import com.amazonaws.services.ec2.model.Reservation;
 import com.amazonaws.services.cloudwatch.AmazonCloudWatch;
 import com.amazonaws.services.cloudwatch.AmazonCloudWatchClientBuilder;
@@ -77,9 +78,11 @@ public class LoadBalancer {
                 DescribeInstancesResult describeInstancesRequest = ec2.describeInstances();
                 List<Reservation> reservations = describeInstancesRequest.getReservations();
                 Set<Instance> instances = new HashSet<Instance>();
-
+                
                 for (Reservation reservation : reservations) {
-                    instances.addAll(reservation.getInstances());
+                	for (Instance testing : reservation.getInstances())
+                		if(testing.getState().equals(InstanceStateName.Running))
+                			instances.add(testing);
                 }
 
                 System.out.println("You have " + instances.size() + " Amazon EC2 instance(s) running.");
