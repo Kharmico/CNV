@@ -35,7 +35,7 @@ import com.amazonaws.services.dynamodbv2.util.TableUtils;
 
 
 public class InstrumentationTool {
-        private static final String tableName = "RTMetrics";
+	private static final String tableName = "RTMetrics";
 	private static AmazonDynamoDBClient dynamoDB = null;
 	private static ConcurrentHashMap<Long, Metrics> metricsPerThread = new ConcurrentHashMap<Long, Metrics>();
 
@@ -219,7 +219,8 @@ public class InstrumentationTool {
 		        System.out.println("TABLENAME: " + tableName);
 		        System.out.println("ITEM INFO: " + item);
 		        PutItemRequest putItemRequest = new PutItemRequest(tableName, item);
-		        System.out.println("REQUEST RECEIVED INFO" + putItemRequest);
+		        System.out.println("REQUEST RECEIVED INFO: " + putItemRequest);
+		        System.out.println("DYNAMODBINFO: " + dynamoDB);
 		        PutItemResult putItemResult = dynamoDB.putItem(putItemRequest);
 		        System.out.println("Result: " + putItemResult);
 				
