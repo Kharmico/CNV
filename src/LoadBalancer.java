@@ -1,7 +1,9 @@
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -73,9 +75,6 @@ public class LoadBalancer {
             String response = t.getRequestURI().getQuery();
             if(response!=null){
             	
-            	DescribeAvailabilityZonesResult availabilityZonesResult = ec2.describeAvailabilityZones();
-                System.out.println("You have access to " + availabilityZonesResult.getAvailabilityZones().size() +
-                        " Availability Zones.");
                 DescribeInstancesResult describeInstancesRequest = ec2.describeInstances();
                 List<Reservation> reservations = describeInstancesRequest.getReservations();
                 Set<Instance> instances = new HashSet<Instance>();
@@ -85,9 +84,16 @@ public class LoadBalancer {
                 		if(testing.getState().getName().equalsIgnoreCase(InstanceStateName.Running.name()))
                 			instances.add(testing);
                 }
-
                 System.out.println("You have " + instances.size() + " Amazon EC2 instance(s) running.");
-
+                
+                for(Instance instan : instances) {
+                	String queryToSend = instan.getPublicIpAddress() + ":8000/r.html";
+                	URL obj = new URL(queryToSend);
+                	
+                	HttpURLConnection conn = (HttpURLConnection) obj.openConnection();
+                }
+                
+                
             }else{
                 t.sendResponseHeaders(200, "LoadBalancer Health Check".length());
                 OutputStream os= t.getResponseBody();

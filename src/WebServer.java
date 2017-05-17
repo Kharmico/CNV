@@ -32,9 +32,6 @@ public class WebServer {
             
             String response = t.getRequestURI().getQuery();
             if(response!=null){
-
-                
-                
                 String[] tokens = response.split("[&=]");
                 String filename = tokens[1];
                 String dir=System.getProperty("user.dir") + "/info";
