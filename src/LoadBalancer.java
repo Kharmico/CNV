@@ -93,8 +93,8 @@ public class LoadBalancer {
                 	URLConnection conn = url.openConnection();
                 	Scanner scan = new Scanner(conn.getInputStream());
                 	
-                	while(scan.hasNextByte()) {
-                		response += scan.nextByte();
+                	while(scan.hasNext()) {
+                		response += scan.next() + " ";
                 	}
                 	scan.close();
 
@@ -105,7 +105,7 @@ public class LoadBalancer {
 //                	String queryToSend = "http://" + instan.getPublicIpAddress() + ":8000/r.html?" + response;
 
                 }
-                
+
                 
             }else{
                 t.sendResponseHeaders(200, "LoadBalancer Health Check".length());
@@ -115,5 +115,4 @@ public class LoadBalancer {
             }
         }
     }
-
 }
