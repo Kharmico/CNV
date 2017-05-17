@@ -61,9 +61,7 @@ public class WebServer {
     			}
         		
         		Path pathToFile = Paths.get(outputfilename.getAbsolutePath());
-        		byte[] fileContent = Files.readAllBytes(pathToFile);
-        		
-        		t.getResponseHeaders().add("Content-Disposition", "attachment; filename=" + outputfile);    		
+        		byte[] fileContent = Files.readAllBytes(pathToFile);   		
         		
                 t.sendResponseHeaders(200, fileContent.length);
                 OutputStream os = t.getResponseBody();
