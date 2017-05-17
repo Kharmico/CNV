@@ -96,7 +96,8 @@ public class LoadBalancer {
             		System.out.println("I WAS HERE!!!!");
             		OutputStream os = t.getResponseBody();
             		System.out.println("AFTER OS WAS CREATED!!!");
-            		os.write(response.getBytes());
+            		byte[] arrayBytes = response.getBytes();
+            		os.write(arrayBytes);
             		System.out.println("AFTER WRITE AND BEFORE CLOSE!!!");
             		os.close();
             		System.out.println("rerout request from CLIENT!");
