@@ -87,26 +87,28 @@ public class LoadBalancer {
                 System.out.println("You have " + instances.size() + " Amazon EC2 instance(s) running.");
                 System.out.println(requestToSend);
                 for(Instance instan : instances) {
-                	String response = "";
-                	URL url = new URL("http://" + instan.getPublicIpAddress() + ":8000/r.html?" + requestToSend);
-                	URLConnection conn = url.openConnection();
-                	conn.setDoInput(true);
-                	conn.setDoOutput(true);
-                	conn.setReadTimeout(1000*60*10);
-                	Scanner scan = new Scanner(conn.getInputStream());
                 	
-                	System.out.println("RECEIVED RESPONSE FROM WEBSERVER!");
-                	while(scan.hasNext()) {
-                		response += scan.next() + " ";
-                	}
-                	scan.close();
+                	System.out.println("rerout request to " + instan.getPublicIpAddress());
+            		URL url = new URL(String.format("http://%s:%s%s?%s", instan.getPublicIpAddress(), "8000", "/r.html",
+            				t.getRequestURI().getQuery()));
+            		System.out.println("url " + url.toString());
+            		HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            		connection.setDoInput(true);
+            		connection.setDoOutput(true);
+            		connection.setReadTimeout(1000 * 60 * 10);
+            		Scanner s = new Scanner(connection.getInputStream());
+            		String response = "";
+            		System.out.println("RECEIVED RESPONSE FROM WEBSERVER!");
+            		while (s.hasNext()) {
+            			response += s.next() + " ";
+            		}
+            		s.close();
 
-                	System.out.println("REDIRECTING BACK TO CLIENT!");
-                	t.sendResponseHeaders(200, response.length());
-           		 	OutputStream os = t.getResponseBody();
-                    os.write(response.getBytes());
-                    os.close();
-                    System.out.println("REDIRECTION COMPLETED!");
+            		t.sendResponseHeaders(200, response.length());
+            		OutputStream os = t.getResponseBody();
+            		os.write(response.getBytes());
+            		os.close();
+            		System.out.println("rerout request from " + instan.getPublicIpAddress());
                 }
 
                 
