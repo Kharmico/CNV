@@ -93,15 +93,18 @@ public class LoadBalancer {
                 	URLConnection conn = url.openConnection();
                 	Scanner scan = new Scanner(conn.getInputStream());
                 	
+                	System.out.println("RECEIVED RESPONSE FROM WEBSERVER!");
                 	while(scan.hasNext()) {
                 		response += scan.next() + " ";
                 	}
                 	scan.close();
-
+                	
+                	System.out.println("REDIRECTING BACK TO CLIENT!");
                 	t.sendResponseHeaders(200, response.length());
            		 	OutputStream os = t.getResponseBody();
                     os.write(response.getBytes());
                     os.close();
+                    System.out.println("REDIRECTION COMPLETED!");
 //                	String queryToSend = "http://" + instan.getPublicIpAddress() + ":8000/r.html?" + response;
 
                 }
