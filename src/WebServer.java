@@ -19,7 +19,7 @@ public class WebServer {
 	private static ExecutorService executor;
 	
     public static void main(String[] args) throws Exception {
-        HttpServer server = HttpServer.create(new InetSocketAddress(8000), 0);
+        HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
         executor = Executors.newFixedThreadPool(10);
         server.createContext("/r.html", new MyHandler());
         server.setExecutor(executor); // creates a default executor
