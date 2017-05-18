@@ -9,9 +9,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.concurrent.Executors;
+import javax.xml.bind.DatatypeConverter;
 import java.util.concurrent.ExecutorService;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Scanner;
 import java.util.Set;
 import com.amazonaws.AmazonClientException;
@@ -19,6 +22,8 @@ import com.amazonaws.AmazonServiceException;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.profile.ProfileCredentialsProvider;
+import com.amazonaws.regions.Region;
+import com.amazonaws.regions.Regions;
 import com.amazonaws.services.ec2.AmazonEC2;
 import com.amazonaws.services.ec2.AmazonEC2ClientBuilder;
 import com.amazonaws.services.ec2.model.TerminateInstancesRequest;
@@ -35,20 +40,63 @@ import com.amazonaws.services.cloudwatch.model.Dimension;
 import com.amazonaws.services.cloudwatch.model.Datapoint;
 import com.amazonaws.services.cloudwatch.model.GetMetricStatisticsRequest;
 import com.amazonaws.services.cloudwatch.model.GetMetricStatisticsResult;
+import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient;
 import com.amazonaws.services.ec2.model.DescribeAvailabilityZonesResult;
-
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 
 
-
 public class LoadBalancer {
 	private static AmazonEC2 ec2;
 	private static ExecutorService executor;
+	private static List<Reservation> reservations;
+	private static Map<Instance, Runners> runningInst;
+	private static Map<String, Integer> rankedQuery; // String is the query params, Integer is the result of the metrics calculation
+	private static final String WS_PORT = "8000";
+	private static final String R_HTML = "/r.html";
+	private static final String TABLENAME = "RTMetrics";
 	
+	static class Runners {
+		public int heavy;
+		public int medium;
+		public int light;
+		
+		public Runners(int heavy, int medium, int light) {
+			this.heavy = heavy;
+			this.medium = medium;
+			this.light = light;
+		}
+	}
+	
+	// Method to initialize needed variables
 	private static void init() {
+		runningInst = new HashMap<Instance, Runners>();
 		AWSCredentials credentials = null;
+		try {
+			credentials = new ProfileCredentialsProvider().getCredentials();
+		} catch (Exception e) {
+			throw new AmazonClientException("Cannot load the credentials from the credential profiles file. " +
+					"Please make sure that your credentials file is at the correct " +
+					"location (~/.aws/credentials), and is in valid format.", e);
+		}
+		ec2 = AmazonEC2ClientBuilder.standard().withRegion("eu-west-2").withCredentials(new AWSStaticCredentialsProvider(credentials)).build();
+	}
+	
+    public static void main(String[] args) throws Exception {
+    	init();
+    	ThreadHelper threadHelp = new ThreadHelper();
+    	threadHelp.start();
+        HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
+        executor = Executors.newCachedThreadPool();
+        server.createContext("/r.html", new MyHandler());
+        server.setExecutor(executor); // creates a default executor
+        server.start();
+    }
+    
+    // Method to pick a WS where to send the request!
+    public static String pickWS() {
+    	AWSCredentials credentials = null;
         try {
             credentials = new ProfileCredentialsProvider().getCredentials();
         } catch (Exception e) {
@@ -58,48 +106,64 @@ public class LoadBalancer {
                     "location (~/.aws/credentials), and is in valid format.",
                     e);
         }
-      ec2 = AmazonEC2ClientBuilder.standard().withRegion("eu-west-2").withCredentials(new AWSStaticCredentialsProvider(credentials)).build();
-	}
-	
-    public static void main(String[] args) throws Exception {
-    	init();
-        HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
-        executor = Executors.newFixedThreadPool(10);
-        server.createContext("/r.html", new MyHandler());
-        server.setExecutor(executor); // creates a default executor
-        server.start();
+        AmazonDynamoDBClient dynamoDB = new AmazonDynamoDBClient(credentials);
+        Region euWest2 = Region.getRegion(Regions.EU_WEST_2);
+        dynamoDB.setRegion(euWest2);
+    	
+    	Runners runAux = new Runners(0,0,0);
+    	for(Map.Entry<Instance, Runners> entries : runningInst.entrySet()){
+    		if(entries.getValue().equals(null) || entries.getValue().equals(runAux))
+    			return entries.getKey().getPublicIpAddress();
+    	}
+    	return "";
     }
     
     static class MyHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange t) throws IOException {
-                System.out.println("GOT A REQUEST BRAH!!!");
+        	String queryAux = t.getRequestURI().getQuery();
 
-                	System.out.println("rerout request to someplace");
-            		URL url = new URL(String.format("http://%s:%s%s?%s", "ec2-52-56-238-133.eu-west-2.compute.amazonaws.com", "8000", "/r.html",
-            				t.getRequestURI().getQuery()));
-            		System.out.println("url " + url.toString());
-            		HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-            		connection.setDoInput(true);
-            		connection.setDoOutput(true);
-            		connection.setReadTimeout(1000 * 60 * 10);
-            		Scanner s = new Scanner(connection.getInputStream());
-            		String response = "";
-            		System.out.println("RECEIVED RESPONSE FROM WEBSERVER!");
-            		while (s.hasNext()) {
-            			response += s.next() + " ";
-            		}
-            		s.close();
-            		System.out.println("AFTER SCANNING WAS DONE!!!!!!");
-            		System.out.println(response.length());
-            		t.sendResponseHeaders(200, response.length());
-            		System.out.println("I WAS HERE!!!!");
-            		OutputStream os = t.getResponseBody();
-            		System.out.println("AFTER OS WAS CREATED!!!");
-            		os.write(response.getBytes());
-            		System.out.println("AFTER WRITE AND BEFORE CLOSE!!!");
-            		os.close();
-            		System.out.println("rerout request from CLIENT!");
+        	String chosenWS = pickWS();
+        	
+        	URL url = new URL(String.format("http://%s:%s%s?%s", chosenWS, WS_PORT, R_HTML, queryAux));
+        	HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        	connection.setDoInput(true);
+        	connection.setDoOutput(true);
+        	connection.setReadTimeout(1000 * 60 * 10);
+        	Scanner s = new Scanner(connection.getInputStream());
+        	String response = "";
+        	while(s.hasNext()){
+        		response += s.next() + " ";
+        	}
+        	s.close();
+        	byte[] receivedResponse = DatatypeConverter.parseBase64Binary(response);
+        	t.sendResponseHeaders(200, receivedResponse.length);
+        	t.getResponseBody().write(receivedResponse);
+        	
+        	
         }
+    }
+    
+    public static class ThreadHelper extends Thread {
+    	
+    	@Override
+    	public void run() {
+    		while(true) {
+	            DescribeInstancesResult describeInstancesRequest = ec2.describeInstances();
+	            reservations = describeInstancesRequest.getReservations();
+	            for (Reservation reservation : reservations) {
+	            	for (Instance instanceToCheck : reservation.getInstances()) {
+	            		if(instanceToCheck.getState().getName().equalsIgnoreCase(InstanceStateName.Running.name()) &&
+	            				!runningInst.containsKey(instanceToCheck))
+	            			runningInst.put(instanceToCheck, null);
+	            	}
+	            }
+	            try {
+					Thread.sleep(60000);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+    		}
+    	}
     }
 }

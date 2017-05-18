@@ -32,11 +32,14 @@ import com.amazonaws.services.dynamodbv2.model.ScanRequest;
 import com.amazonaws.services.dynamodbv2.model.ScanResult;
 import com.amazonaws.services.dynamodbv2.model.TableDescription;
 import com.amazonaws.services.dynamodbv2.util.TableUtils;
+import com.amazonaws.services.dynamodbv2.util.TableUtils.TableNeverTransitionedToStateException;
 
 
 public class InstrumentationTool {
-	private static final String tableName = "RTMetrics";
+	private static final String TABLENAME = "RTMetrics";
 	private static ConcurrentHashMap<Long, Metrics> metricsPerThread = new ConcurrentHashMap<Long, Metrics>();
+	private static String queryParams;
+	AmazonDynamoDBClient dynamoDB;
 
 	// Class where to save the metrics counted and then save on DynamoDB
 	static class Metrics {
@@ -53,6 +56,13 @@ public class InstrumentationTool {
 			this.fieldaccess_count = fieldaccess_count;
 			this.memaccess_count = memaccess_count;
 		}
+		public void reset() {
+			this.method_count = 0;
+			this.bb_count = 0;
+			this.instr_count = 0;
+			this.fieldaccess_count = 0;
+			this.memaccess_count = 0;
+		}
 	}
 	
 	
@@ -66,7 +76,7 @@ public class InstrumentationTool {
         BasicBlock bb;
         Instruction instr;
         
-        AWSCredentials credentials = null;
+		AWSCredentials credentials = null;
         try {
             credentials = new ProfileCredentialsProvider().getCredentials();
         } catch (Exception e) {
@@ -80,37 +90,21 @@ public class InstrumentationTool {
         Region euWest2 = Region.getRegion(Regions.EU_WEST_2);
         dynamoDB.setRegion(euWest2);
         
+     // Create a table with a primary hash key named 'name', which holds a string
+        CreateTableRequest createTableRequest = new CreateTableRequest().withTableName(TABLENAME)
+            .withKeySchema(new KeySchemaElement().withAttributeName("queryparam").withKeyType(KeyType.HASH))
+            .withAttributeDefinitions(new AttributeDefinition().withAttributeName("queryparam").withAttributeType(ScalarAttributeType.S))
+            .withProvisionedThroughput(new ProvisionedThroughput().withReadCapacityUnits(10L).withWriteCapacityUnits(10L));
+
+        // Create table if it does not exist yet
+        TableUtils.createTableIfNotExists(dynamoDB, createTableRequest);
+
+        // wait for the table to move into ACTIVE state
         try {
-
-            // Create a table with a primary hash key named 'name', which holds a string
-            CreateTableRequest createTableRequest = new CreateTableRequest().withTableName(tableName)
-                .withKeySchema(new KeySchemaElement().withAttributeName("ipaddr").withKeyType(KeyType.HASH))
-                .withAttributeDefinitions(new AttributeDefinition().withAttributeName("ipaddr").withAttributeType(ScalarAttributeType.S))
-                .withProvisionedThroughput(new ProvisionedThroughput().withReadCapacityUnits(10L).withWriteCapacityUnits(10L));
-
-            // Create table if it does not exist yet
-            TableUtils.createTableIfNotExists(dynamoDB, createTableRequest);
-            // wait for the table to move into ACTIVE state
-            TableUtils.waitUntilActive(dynamoDB, tableName);
-            
-        } catch (AmazonServiceException ase) {
-            System.out.println("Caught an AmazonServiceException, which means your request made it "
-                    + "to AWS, but was rejected with an error response for some reason.");
-            System.out.println("Error Message:    " + ase.getMessage());
-            System.out.println("HTTP Status Code: " + ase.getStatusCode());
-            System.out.println("AWS Error Code:   " + ase.getErrorCode());
-            System.out.println("Error Type:       " + ase.getErrorType());
-            System.out.println("Request ID:       " + ase.getRequestId());
-        } catch (AmazonClientException ace) {
-            System.out.println("Caught an AmazonClientException, which means the client encountered "
-                    + "a serious internal problem while trying to communicate with AWS, "
-                    + "such as not being able to access the network.");
-            System.out.println("Error Message: " + ace.getMessage());
-        } catch (InterruptedException inte) {
-            System.out.println("An Interrupted Exception was caught!");
-            System.out.println("Error Message: " + inte.getMessage());
-        }
-        
+			TableUtils.waitUntilActive(dynamoDB, TABLENAME);
+		} catch (TableNeverTransitionedToStateException | InterruptedException e) {
+			e.printStackTrace();
+		}
         
         if(infilename.endsWith(".class")) {
         	// Create class info object
@@ -134,11 +128,11 @@ public class InstrumentationTool {
             		for(Enumeration instrs = routine.getInstructionArray().elements(); instrs.hasMoreElements(); ) {
             			instr = (Instruction) instrs.nextElement();
             			int opcode = instr.getOpcode();
-            			if(opcode == InstructionTable.putfield || opcode == InstructionTable.getfield)
+            			if(opcode == InstructionTable.getfield)
             				instr.addBefore("InstrumentationTool", "fieldaccesscount", new Integer(1));
             			else {
             				short instr_type = InstructionTable.InstructionTypeTable[opcode];
-            				if(instr_type == InstructionTable.LOAD_INSTRUCTION || instr_type == InstructionTable.STORE_INSTRUCTION)
+            				if(instr_type == InstructionTable.LOAD_INSTRUCTION)
             					instr.addBefore("InstrumentationTool", "memaccesscount", new Integer(1));
             			}
             		}
@@ -151,6 +145,11 @@ public class InstrumentationTool {
         	ci.write(outfilename);
         }
     }
+	
+	// Extra function to receive the query parameters and save them as the key on the table
+	public static void setValues(String queryParam) {
+		queryParams = queryParam;
+	}
 	
 	// Initialize the Metric, if not exists, for a given threadId
 	public static synchronized void metricinit(String empty) {
@@ -196,7 +195,6 @@ public class InstrumentationTool {
 	// logfile->  Thread: # | Methods: # | Blocks: # | Instructions: # | FieldAccess: # | MemAccess: #
 	public static synchronized void metricStorage(String empty) throws UnknownHostException {
 		long threadId = Thread.currentThread().getId();
-		InetAddress ipaddr = InetAddress.getLocalHost();
 		Metrics metric;
 		
         AWSCredentials credentials = null;
@@ -213,38 +211,33 @@ public class InstrumentationTool {
         Region euWest2 = Region.getRegion(Regions.EU_WEST_2);
         dynamoDB.setRegion(euWest2);
 		
-		for(Map.Entry<Long,Metrics> entries : metricsPerThread.entrySet()) {
-			threadId = entries.getKey();
-			metric = entries.getValue();
-			
-			try {
-				Map<String, AttributeValue> item = new HashMap<String, AttributeValue>();
-				
-		        item.put("ipaddr", new AttributeValue(ipaddr.getCanonicalHostName()));
-		        item.put("threadId", new AttributeValue(String.valueOf(threadId)));
-		        item.put("method", new AttributeValue(String.valueOf(metric.method_count)));
-		        item.put("bb", new AttributeValue(String.valueOf(metric.bb_count)));
-		        item.put("instr", new AttributeValue(String.valueOf(metric.instr_count)));
-		        item.put("fieldaccess", new AttributeValue(String.valueOf(metric.fieldaccess_count)));
-		        item.put("memaccess", new AttributeValue(String.valueOf(metric.memaccess_count)));
-		        PutItemRequest putItemRequest = new PutItemRequest(tableName, item);
-		        PutItemResult putItemResult = dynamoDB.putItem(putItemRequest);	
-			} catch (AmazonServiceException ase) {
-		        System.out.println("Caught an AmazonServiceException, which means your request made it "
-		                + "to AWS, but was rejected with an error response for some reason.");
-		        System.out.println("Error Message:    " + ase.getMessage());
-		        System.out.println("HTTP Status Code: " + ase.getStatusCode());
-		        System.out.println("AWS Error Code:   " + ase.getErrorCode());
-		        System.out.println("Error Type:       " + ase.getErrorType());
-		        System.out.println("Request ID:       " + ase.getRequestId());
-		    } catch (AmazonClientException ace) {
-		        System.out.println("Caught an AmazonClientException, which means the client encountered "
-		                + "a serious internal problem while trying to communicate with AWS, "
-		                + "such as not being able to access the network.");
-		        System.out.println("Error Message: " + ace.getMessage());
-		    }
-
-		}
-
-    }   
+        metric = metricsPerThread.get(threadId);
+		try {
+			Map<String, AttributeValue> item = new HashMap<String, AttributeValue>();
+	        item.put("queryparam", new AttributeValue(queryParams));
+	        item.put("method", new AttributeValue(String.valueOf(metric.method_count)));
+	        item.put("bb", new AttributeValue(String.valueOf(metric.bb_count)));
+	        item.put("instr", new AttributeValue(String.valueOf(metric.instr_count)));
+	        item.put("fieldaccess", new AttributeValue(String.valueOf(metric.fieldaccess_count)));
+	        item.put("memaccess", new AttributeValue(String.valueOf(metric.memaccess_count)));
+	        item.put("rank", new AttributeValue("0"));
+	        PutItemRequest putItemRequest = new PutItemRequest(TABLENAME, item).withConditionExpression("attribute_not_exists(queryparam)");
+	        dynamoDB.putItem(putItemRequest);
+	        metric.reset();
+	        metricsPerThread.put(threadId, metric);
+		} catch (AmazonServiceException ase) {
+	        System.out.println("Caught an AmazonServiceException, which means your request made it "
+	                + "to AWS, but was rejected with an error response for some reason.");
+	        System.out.println("Error Message:    " + ase.getMessage());
+	        System.out.println("HTTP Status Code: " + ase.getStatusCode());
+	        System.out.println("AWS Error Code:   " + ase.getErrorCode());
+	        System.out.println("Error Type:       " + ase.getErrorType());
+	        System.out.println("Request ID:       " + ase.getRequestId());
+	    } catch (AmazonClientException ace) {
+	        System.out.println("Caught an AmazonClientException, which means the client encountered "
+	                + "a serious internal problem while trying to communicate with AWS, "
+	                + "such as not being able to access the network.");
+	        System.out.println("Error Message: " + ace.getMessage());
+	    }
+    }
 }
