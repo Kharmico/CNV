@@ -15,6 +15,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.concurrent.Executors;
 import javax.xml.bind.DatatypeConverter;
+
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.Enumeration;
 import java.util.HashMap;
@@ -72,9 +74,9 @@ public class LoadBalancer {
 	private static AmazonEC2 ec2;
 	private static ExecutorService executor;
 	private static List<Reservation> reservations;
-	private static Map<Instance, Runners> runningInst;
-	private static Map<String, String> rankedQuery; // String is the query params, Integer is the result of the metrics calculation
-	private static Map<String, Instance> threadInstance;
+	private static ConcurrentHashMap<Instance, Runners> runningInst;
+	private static ConcurrentHashMap<String, String> rankedQuery; // String is the query params, Integer is the result of the metrics calculation
+	private static ConcurrentHashMap<String, Instance> threadInstance;
 
 	
 	static class Runners {
@@ -91,7 +93,9 @@ public class LoadBalancer {
 	
 	// Method to initialize needed variables
 	private static void init() {
-		runningInst = new HashMap<Instance, Runners>();
+		rankedQuery = new ConcurrentHashMap<String, String>();
+		runningInst = new ConcurrentHashMap<Instance, Runners>();
+		threadInstance = new ConcurrentHashMap<String, Instance>();
 		try {
 			credentials = new ProfileCredentialsProvider().getCredentials();
 		} catch (Exception e) {
@@ -119,6 +123,7 @@ public class LoadBalancer {
     // Method to pick a WS where to send the request!
     private static String pickWS(String queryAux) {
     	String rank = "";
+    	
     	// Get rank if it exists saved locally
     	if(rankedQuery.containsKey(queryAux))
     		rank = rankedQuery.get(queryAux);
@@ -127,12 +132,12 @@ public class LoadBalancer {
 	    	Map<String, AttributeValue> getitem = new HashMap<String, AttributeValue>();
 	    	getitem.put("queryparam", new AttributeValue(queryAux));
 	    	GetItemResult itemrec = dynamoDB.getItem(TABLENAME, getitem);
-	    	if(itemrec != null) {
+	    	if(itemrec.getItem() != null) {
 	        	Map<String, AttributeValue> maprec = itemrec.getItem();
-	        	String rankrec = maprec.get(queryAux).toString();
-	        	rankedQuery.put(queryAux, rankrec);
-	        	rank = rankrec;
-	        	System.out.print("The query params: " + queryAux + "\nThe rank of the query: " + rankrec);
+	        	AttributeValue rankrec = maprec.get("rank");
+	        	String rankrecAux = rankrec.getS();
+	        	rank = rankrecAux;
+	        	rankedQuery.put(queryAux, rankrecAux);
 	        }
     	}
     	
@@ -159,22 +164,25 @@ public class LoadBalancer {
         }
 
     	// Pick the instance where to send the query to, by checking the load of queries on each one.
-    	int heavyAux;
-    	int mediumAux;
-    	int lightAux;
+
     	// 1 Heavy = 2 Medium; 1 Medium = 2 Light; 1 Heavy = 4 Light;
     	// Considering the max is 10 Lights (per say), then the ratios will have to go accordingly
     	// Beginning ratio is 10 because the max amount of requests going to a server is 10
+    	int heavyAux = 0;
+    	int mediumAux = 0;
+    	int lightAux = 0;
     	int ratio = 11;
-    	int ratioAux;
+    	int ratioAux = 0;
     	Runners runAux = new Runners(0,0,0);
     	String addrAux = "";
-    	Instance instanAux = null;
+    	Instance instanAux = new Instance();
     	for(Map.Entry<Instance, Runners> entries : runningInst.entrySet()){
+    		if(runningInst.isEmpty())
+    			break;
     		heavyAux = entries.getValue().heavy;
     		mediumAux = entries.getValue().medium;
     		lightAux = entries.getValue().light;
-    		ratioAux = heavyAux+mediumAux+lightAux;
+    		ratioAux = heavyAux*4+mediumAux*2+lightAux;
     		if(entries.getValue().equals(null) || entries.getValue().equals(runAux)){
     			if(rank.equals(LIGHT))
     				runAux.light++;
@@ -190,22 +198,26 @@ public class LoadBalancer {
     			else if(heavyAux == 1 && ratio > (ratioAux + 4)){
     				ratio = ratioAux + 4;
     				addrAux = entries.getKey().getPublicIpAddress();
+    				instanAux = entries.getKey();
     			}
     			else if(ratio > (ratioAux + 4)){
     				ratio = ratioAux;
     				addrAux = entries.getKey().getPublicIpAddress();
+    				instanAux = entries.getKey();
     			}
     		}
     		if(rank.equals(MEDIUM) && ratioAux < TEN){
     			if(ratio > (ratioAux + 2)){
     				ratio = ratioAux + 2;
     				addrAux = entries.getKey().getPublicIpAddress();
+    				instanAux = entries.getKey();
     			}
     		}
     		if(rank.equals(LIGHT) && ratioAux < TEN){
     			if(ratio > (ratioAux + 1)){
     				ratio = ratioAux + 1;
     				addrAux = entries.getKey().getPublicIpAddress();
+    				instanAux = entries.getKey();
     			}
     		}
     	}
@@ -278,6 +290,7 @@ public class LoadBalancer {
         }
     }
     
+    
     private static InetAddress localhostAddress() {
 		try {
 			try {
@@ -299,21 +312,21 @@ public class LoadBalancer {
 			return null;
 		}
 	}
-
+    
     public static class ThreadHelper extends Thread {
     	@Override
     	public void run() {
     		while(true) {
-	            DescribeInstancesResult describeInstancesRequest = ec2.describeInstances();
-	            reservations = describeInstancesRequest.getReservations();
-	            for (Reservation reservation : reservations) {
-	            	for (Instance instanceToCheck : reservation.getInstances()) {
-	            		if(instanceToCheck.getState().getName().equalsIgnoreCase(InstanceStateName.Running.name()) &&
-	            				!runningInst.containsKey(instanceToCheck) && 
-	            				!instanceToCheck.getPublicIpAddress().equals(localhostAddress().getCanonicalHostName()));
-	            			runningInst.put(instanceToCheck, null);
-	            	}
-	            }
+    			DescribeInstancesResult describeInstancesRequest = ec2.describeInstances();
+    		    reservations = describeInstancesRequest.getReservations();
+    		    for (Reservation reservation : reservations) {
+    		    	for (Instance instanceToCheck : reservation.getInstances()) {
+    		    		if(instanceToCheck.getState().getName().equalsIgnoreCase(InstanceStateName.Running.name()) &&
+    		    				!runningInst.containsKey(instanceToCheck) && 
+    		    				!instanceToCheck.getPublicIpAddress().equals(localhostAddress().getCanonicalHostName()));
+    		    			runningInst.put(instanceToCheck, new Runners(0,0,0));
+    		    	}
+    		    }
 	            try {
 					Thread.sleep(60000);
 				} catch (InterruptedException e) {
