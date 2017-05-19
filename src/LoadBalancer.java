@@ -322,12 +322,12 @@ public class LoadBalancer {
     		    	for (Instance instanceToCheck : reservation.getInstances()) {
     		    		if(instanceToCheck.getState().getName().equalsIgnoreCase(InstanceStateName.Running.name()) &&
     		    				!runningInst.containsKey(instanceToCheck) && 
-    		    				!instanceToCheck.getPublicIpAddress().equals(localhostAddress().getCanonicalHostName()));
+    		    				!instanceToCheck.getPublicIpAddress().equals(localhostAddress().getCanonicalHostName()))
     		    			runningInst.put(instanceToCheck, new Runners(0,0,0));
     		    	}
     		    }
 	            try {
-	            	Thread.sleep(10000);
+	            	Thread.sleep(60000);
 				} catch (InterruptedException e) {
 					e.printStackTrace();
 				}
