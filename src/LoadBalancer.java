@@ -15,7 +15,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.concurrent.Executors;
 import javax.xml.bind.DatatypeConverter;
-
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.Enumeration;
@@ -63,8 +62,8 @@ public class LoadBalancer {
 	private static final String LIGHT = "LIGHT";
 	private static final String MEDIUM = "MEDIUM";
 	private static final String HEAVY = "HEAVY";
-	private static final int MAX_HEAVY = 2;				// 1 Heavy = 2 Medium
-	private static final int MAX_MEDIUM = 5;			// 1 Medium = 2 Lights
+	private static final int MAX_HEAVY = 2;
+	private static final int MAX_MEDIUM = 5;
 	private static final int MAX_LIGHT = TEN;
 	private static final String WS_PORT = "8000";
 	private static final String R_HTML = "/r.html";
@@ -114,14 +113,14 @@ public class LoadBalancer {
     	ThreadHelper threadHelp = new ThreadHelper();
     	threadHelp.start();
         HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
-        executor = Executors.newCachedThreadPool();
+        executor = Executors.newFixedThreadPool(10);
         server.createContext("/r.html", new MyHandler());
         server.setExecutor(executor); // creates a default executor
         server.start();
     }
     
     // Method to pick a WS where to send the request!
-    private static String pickWS(String queryAux) {
+    private synchronized static String pickWS(String queryAux) {
     	String rank = "";
     	
     	// Get rank if it exists saved locally
@@ -237,7 +236,7 @@ public class LoadBalancer {
     
     // Method to process information after the Query was answered back to the client
     // Putting new information on the necessary structures.
-    private static void postRequest(String queryAux) {
+    private synchronized static void postRequest(String queryAux) {
     	Map<String, AttributeValue> getitem = new HashMap<String, AttributeValue>();
     	getitem.put("queryparam", new AttributeValue(queryAux));
     	GetItemResult itemrec = dynamoDB.getItem(TABLENAME, getitem);
@@ -263,10 +262,18 @@ public class LoadBalancer {
         @Override
         public void handle(HttpExchange t) throws IOException {
         	String queryAux = t.getRequestURI().getQuery();
-
-        	String chosenWS = pickWS(queryAux);
-        	if(chosenWS.equals(""))
-        		System.out.println("SOMETHING SHOULDN'T HAVE HAPPENED HERE!!!");
+        	String chosenWS = "";
+        	while(true) {
+	        	chosenWS = pickWS(queryAux);
+	        	if(!chosenWS.equals(""))
+	        		break;
+				try {
+					Thread.sleep(5000);
+				} catch (InterruptedException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+        	}
         	
         	URL url = new URL(String.format("http://%s:%s%s?%s", chosenWS, WS_PORT, R_HTML, queryAux));
         	HttpURLConnection connection = (HttpURLConnection) url.openConnection();
