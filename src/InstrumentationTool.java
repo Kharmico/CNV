@@ -37,7 +37,6 @@ import com.amazonaws.services.dynamodbv2.util.TableUtils.TableNeverTransitionedT
 
 public class InstrumentationTool {
 	private static final String TABLENAME = "RTMetrics";
-	private static final int DIV_HUNTHO = 100000;
 	private static ConcurrentHashMap<Long, Metrics> metricsPerThread = new ConcurrentHashMap<Long, Metrics>();
 	private static String queryParams;
 	AmazonDynamoDBClient dynamoDB;
@@ -214,8 +213,8 @@ public class InstrumentationTool {
 		
         metric = metricsPerThread.get(threadId);
 		try {
-			double rankN = (metric.bb_count/DIV_HUNTHO)*0.1 + (metric.fieldaccess_count/DIV_HUNTHO)*0.1 + metric.method_count*0.05 + 
-					(metric.instr_count/DIV_HUNTHO)*0.4 + (metric.memaccess_count/DIV_HUNTHO)*0.35;
+			double rank = (metric.bb_count/100000)*0.1 + (metric.fieldaccess_count/100000)*0.1 + 
+					(metric.instr_count/100000)*0.4 + (metric.memaccess_count/100000)*0.35 + metric.method_count*0.05;
 			Map<String, AttributeValue> item = new HashMap<String, AttributeValue>();
 	        item.put("queryparam", new AttributeValue(queryParams));
 	        item.put("method", new AttributeValue(String.valueOf(metric.method_count)));
@@ -223,7 +222,7 @@ public class InstrumentationTool {
 	        item.put("instr", new AttributeValue(String.valueOf(metric.instr_count)));
 	        item.put("fieldaccess", new AttributeValue(String.valueOf(metric.fieldaccess_count)));
 	        item.put("memaccess", new AttributeValue(String.valueOf(metric.memaccess_count)));
-	        item.put("rankN", new AttributeValue(String.valueOf(rankN)));
+	        item.put("rankN", new AttributeValue(String.valueOf(rank)));
 	        item.put("rankS", new AttributeValue("0"));
 	        PutItemRequest putItemRequest = new PutItemRequest(TABLENAME, item).withConditionExpression("attribute_not_exists(queryparam)");
 	        dynamoDB.putItem(putItemRequest);

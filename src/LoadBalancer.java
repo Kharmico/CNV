@@ -48,6 +48,11 @@ import com.sun.net.httpserver.HttpServer;
 
 
 public class LoadBalancer {
+	private static String LIGHT = "LIGHT";
+	private static String MEDIUM = "MEDIUM";
+	private static String HEAVY = "HEAVY";
+	private static AWSCredentials credentials = null;
+	private static AmazonDynamoDBClient dynamoDB;
 	private static AmazonEC2 ec2;
 	private static ExecutorService executor;
 	private static List<Reservation> reservations;
@@ -72,7 +77,6 @@ public class LoadBalancer {
 	// Method to initialize needed variables
 	private static void init() {
 		runningInst = new HashMap<Instance, Runners>();
-		AWSCredentials credentials = null;
 		try {
 			credentials = new ProfileCredentialsProvider().getCredentials();
 		} catch (Exception e) {
@@ -81,6 +85,9 @@ public class LoadBalancer {
 					"location (~/.aws/credentials), and is in valid format.", e);
 		}
 		ec2 = AmazonEC2ClientBuilder.standard().withRegion("eu-west-2").withCredentials(new AWSStaticCredentialsProvider(credentials)).build();
+		dynamoDB= new AmazonDynamoDBClient(credentials);
+        Region euWest2 = Region.getRegion(Regions.EU_WEST_2);
+        dynamoDB.setRegion(euWest2);
 	}
 	
     public static void main(String[] args) throws Exception {
@@ -95,9 +102,8 @@ public class LoadBalancer {
     }
     
     // Method to pick a WS where to send the request!
-    public static String pickWS(String queryAux) {
+    private static String pickWS(String queryAux) {
     	String rank;
-    	
     	// Get rank if it exists saved locally
     	if(rankedQuery.containsKey(queryAux))
     		rank = rankedQuery.get(queryAux);
@@ -106,19 +112,7 @@ public class LoadBalancer {
     	//TODO: Code to access DynamoDB and query!
     	
     	// Rank is unknown at the moment, going to estimate! How?
-    	AWSCredentials credentials = null;
-        try {
-            credentials = new ProfileCredentialsProvider().getCredentials();
-        } catch (Exception e) {
-            throw new AmazonClientException(
-                    "Cannot load the credentials from the credential profiles file. " +
-                    "Please make sure that your credentials file is at the correct " +
-                    "location (~/.aws/credentials), and is in valid format.",
-                    e);
-        }
-        AmazonDynamoDBClient dynamoDB = new AmazonDynamoDBClient(credentials);
-        Region euWest2 = Region.getRegion(Regions.EU_WEST_2);
-        dynamoDB.setRegion(euWest2);
+    	
     	
     	Runners runAux = new Runners(0,0,0);
     	for(Map.Entry<Instance, Runners> entries : runningInst.entrySet()){
@@ -150,9 +144,16 @@ public class LoadBalancer {
         	t.sendResponseHeaders(200, receivedResponse.length);
         	t.getResponseBody().write(receivedResponse);
         	
+        	calculateRank(queryAux);
         	
         }
     }
+    
+    
+    private static void calculateRank(String queryAux) {
+    	
+    }
+    
     
     public static class ThreadHelper extends Thread {
     	
