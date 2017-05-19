@@ -253,6 +253,8 @@ public class LoadBalancer {
         	String queryAux = t.getRequestURI().getQuery();
 
         	String chosenWS = pickWS(queryAux);
+        	if(chosenWS.equals(""))
+        		System.out.println("SOMETHING SHOULDN'T HAVE HAPPENED HERE!!!");
         	
         	URL url = new URL(String.format("http://%s:%s%s?%s", chosenWS, WS_PORT, R_HTML, queryAux));
         	HttpURLConnection connection = (HttpURLConnection) url.openConnection();
