@@ -300,28 +300,6 @@ public class LoadBalancer {
     }
     
     
-    private static InetAddress localhostAddress() {
-		try {
-			try {
-				Enumeration<NetworkInterface> e = NetworkInterface.getNetworkInterfaces();
-				while (e.hasMoreElements()) {
-					NetworkInterface n = e.nextElement();
-					Enumeration<InetAddress> ee = n.getInetAddresses();
-					while (ee.hasMoreElements()) {
-						InetAddress i = ee.nextElement();
-						if (i instanceof Inet4Address && !i.isLoopbackAddress())
-							return i;
-					}
-				}
-			} catch (SocketException e) {
-				// do nothing
-			}
-			return InetAddress.getLocalHost();
-		} catch (UnknownHostException e) {
-			return null;
-		}
-	}
-    
     public static class ThreadHelper extends Thread {
     	@Override
     	public void run() {
@@ -331,9 +309,11 @@ public class LoadBalancer {
     		    for (Reservation reservation : reservations) {
     		    	for (Instance instanceToCheck : reservation.getInstances()) {
     		    		if(instanceToCheck.getState().getName().equalsIgnoreCase(InstanceStateName.Running.name()) &&
-    		    				!runningInst.containsKey(instanceToCheck) && 
-    		    				!instanceToCheck.getInstanceId().equals("i-034acd2788a980bbc"))
+    		    				!runningInst.containsKey(instanceToCheck) && !instanceToCheck.getInstanceId().equals("i-034acd2788a980bbc"))
     		    			runningInst.put(instanceToCheck, new Runners(0,0,0));
+    		    		if(!instanceToCheck.getState().getName().equalsIgnoreCase(InstanceStateName.Running.name()) && 
+    		    				runningInst.containsKey(instanceToCheck))
+    		    				runningInst.remove(instanceToCheck);
     		    	}
     		    }
 	            try {
