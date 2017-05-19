@@ -103,9 +103,15 @@ public class LoadBalancer {
     
     // Method to pick a WS where to send the request!
     private static String pickWS(String queryAux) {
-        String rank;
+    	String rank;
+    	// Get rank if it exists saved locally
     	if(rankedQuery.containsKey(queryAux))
     		rank = rankedQuery.get(queryAux);
+    	
+    	// Get rank if doesn't exist locally but on DynamoDB
+    	//TODO: Code to access DynamoDB and query!
+    	
+    	// Rank is unknown at the moment, going to estimate! How?
     	
     	
     	Runners runAux = new Runners(0,0,0);
@@ -159,7 +165,7 @@ public class LoadBalancer {
 	            for (Reservation reservation : reservations) {
 	            	for (Instance instanceToCheck : reservation.getInstances()) {
 	            		if(instanceToCheck.getState().getName().equalsIgnoreCase(InstanceStateName.Running.name()) &&
-	            				!runningInst.containsKey(instanceToCheck))
+	            				!runningInst.containsKey(instanceToCheck));
 	            			runningInst.put(instanceToCheck, null);
 	            	}
 	            }
