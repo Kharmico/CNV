@@ -324,7 +324,7 @@ public class LoadBalancer {
     		    				!runningInst.containsKey(instanceToCheck) && 
     		    				!instanceToCheck.getPublicDnsName().equals(localhostAddress().getCanonicalHostName())){
     		    			runningInst.put(instanceToCheck, new Runners(0,0,0));
-    		    			System.out.println("I AM GROOT!: " + instanceToCheck.getPublicIpAddress());
+    		    			System.out.println("I AM GROOT!: " + instanceToCheck.getPublicDnsName());
     		    			System.out.println("I AM GROOT 2!: " + localhostAddress().getCanonicalHostName());
     		    		}
     		    	}
