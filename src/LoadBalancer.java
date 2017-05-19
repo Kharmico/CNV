@@ -322,10 +322,9 @@ public class LoadBalancer {
     		    	for (Instance instanceToCheck : reservation.getInstances()) {
     		    		if(instanceToCheck.getState().getName().equalsIgnoreCase(InstanceStateName.Running.name()) &&
     		    				!runningInst.containsKey(instanceToCheck) && 
-    		    				!instanceToCheck.equals(localhostAddress().getCanonicalHostName())){
+    		    				!instanceToCheck.getInstanceId().equals("i-034acd2788a980bbc")){
     		    			runningInst.put(instanceToCheck, new Runners(0,0,0));
-    		    			System.out.println("I AM GROOT!: " + instanceToCheck.getInstanceId());
-    		    			System.out.println("I AM GROOT 2!: " + localhostAddress().getCanonicalHostName());
+    		    			System.out.println("THIS IS MY INSTANCE ID: " + instanceToCheck.getInstanceId());
     		    		}
     		    	}
     		    }
