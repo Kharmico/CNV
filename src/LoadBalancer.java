@@ -2,15 +2,21 @@ import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
+import java.net.Inet4Address;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.NetworkInterface;
+import java.net.SocketException;
 import java.net.URL;
 import java.net.URLConnection;
+import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.concurrent.Executors;
 import javax.xml.bind.DatatypeConverter;
 import java.util.concurrent.ExecutorService;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -41,6 +47,9 @@ import com.amazonaws.services.cloudwatch.model.Datapoint;
 import com.amazonaws.services.cloudwatch.model.GetMetricStatisticsRequest;
 import com.amazonaws.services.cloudwatch.model.GetMetricStatisticsResult;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient;
+import com.amazonaws.services.dynamodbv2.document.Table;
+import com.amazonaws.services.dynamodbv2.model.AttributeValue;
+import com.amazonaws.services.dynamodbv2.model.GetItemResult;
 import com.amazonaws.services.ec2.model.DescribeAvailabilityZonesResult;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
@@ -48,9 +57,16 @@ import com.sun.net.httpserver.HttpServer;
 
 
 public class LoadBalancer {
-	private static String LIGHT = "LIGHT";
-	private static String MEDIUM = "MEDIUM";
-	private static String HEAVY = "HEAVY";
+	private static final int TEN = 10;
+	private static final String LIGHT = "LIGHT";
+	private static final String MEDIUM = "MEDIUM";
+	private static final String HEAVY = "HEAVY";
+	private static final int MAX_HEAVY = 2;				// 1 Heavy = 2 Medium
+	private static final int MAX_MEDIUM = 5;			// 1 Medium = 2 Lights
+	private static final int MAX_LIGHT = TEN;
+	private static final String WS_PORT = "8000";
+	private static final String R_HTML = "/r.html";
+	private static final String TABLENAME = "RTMetrics";
 	private static AWSCredentials credentials = null;
 	private static AmazonDynamoDBClient dynamoDB;
 	private static AmazonEC2 ec2;
@@ -58,9 +74,8 @@ public class LoadBalancer {
 	private static List<Reservation> reservations;
 	private static Map<Instance, Runners> runningInst;
 	private static Map<String, String> rankedQuery; // String is the query params, Integer is the result of the metrics calculation
-	private static final String WS_PORT = "8000";
-	private static final String R_HTML = "/r.html";
-	private static final String TABLENAME = "RTMetrics";
+	private static Map<String, Instance> threadInstance;
+
 	
 	static class Runners {
 		public int heavy;
@@ -103,24 +118,134 @@ public class LoadBalancer {
     
     // Method to pick a WS where to send the request!
     private static String pickWS(String queryAux) {
-    	String rank;
+    	String rank = "";
     	// Get rank if it exists saved locally
     	if(rankedQuery.containsKey(queryAux))
     		rank = rankedQuery.get(queryAux);
-    	
-    	// Get rank if doesn't exist locally but on DynamoDB
-    	//TODO: Code to access DynamoDB and query!
-    	
-    	// Rank is unknown at the moment, going to estimate! How?
-    	
-    	
-    	Runners runAux = new Runners(0,0,0);
-    	for(Map.Entry<Instance, Runners> entries : runningInst.entrySet()){
-    		if(entries.getValue().equals(null) || entries.getValue().equals(runAux))
-    			return entries.getKey().getPublicIpAddress();
+    	else {
+    		// Get rank if doesn't exist locally but on DynamoDB
+	    	Map<String, AttributeValue> getitem = new HashMap<String, AttributeValue>();
+	    	getitem.put("queryparam", new AttributeValue(queryAux));
+	    	GetItemResult itemrec = dynamoDB.getItem(TABLENAME, getitem);
+	    	if(itemrec != null) {
+	        	Map<String, AttributeValue> maprec = itemrec.getItem();
+	        	String rankrec = maprec.get(queryAux).toString();
+	        	rankedQuery.put(queryAux, rankrec);
+	        	rank = rankrec;
+	        	System.out.print("The query params: " + queryAux + "\nThe rank of the query: " + rankrec);
+	        }
     	}
-    	return "";
+    	
+    	// Rank is unknown at the moment, going to estimate! How? Euclidian, calculations, checking all previous query params to
+    	// see if one with really close values exist, if it does, then it's that one!
+    	if(rank.equals("")){
+        	String[] tokensQuery = queryAux.split("[&=]");
+        	double valueToCheck = Integer.MAX_VALUE;
+        	for(Map.Entry<String, String> queryEntries: rankedQuery.entrySet()){
+        		String[] tokensEntry = queryEntries.getKey().split("[&=]");
+                double eucliDist = Math.sqrt((Integer.parseInt(tokensQuery[3]) - Integer.parseInt(tokensEntry[3]))*2 + 
+                		(Integer.parseInt(tokensQuery[5]) - Integer.parseInt(tokensEntry[5]))*2 + 
+                		(Integer.parseInt(tokensQuery[7]) - Integer.parseInt(tokensEntry[7]))*2 + 
+                		(Integer.parseInt(tokensQuery[9]) - Integer.parseInt(tokensEntry[9]))*2 + 
+                		(Integer.parseInt(tokensQuery[11]) - Integer.parseInt(tokensEntry[11]))*2 + 
+                		(Integer.parseInt(tokensQuery[13]) - Integer.parseInt(tokensEntry[13]))*2);
+        		if(eucliDist < valueToCheck) {
+        			valueToCheck = eucliDist;
+        			rank = queryEntries.getValue();
+        		}
+        	}
+        	if(rank.equals(""))
+        		rank = HEAVY;
+        }
+
+    	// Pick the instance where to send the query to, by checking the load of queries on each one.
+    	int heavyAux;
+    	int mediumAux;
+    	int lightAux;
+    	// 1 Heavy = 2 Medium; 1 Medium = 2 Light; 1 Heavy = 4 Light;
+    	// Considering the max is 10 Lights (per say), then the ratios will have to go accordingly
+    	// Beginning ratio is 10 because the max amount of requests going to a server is 10
+    	int ratio = 11;
+    	int ratioAux;
+    	Runners runAux = new Runners(0,0,0);
+    	String addrAux = "";
+    	Instance instanAux = null;
+    	for(Map.Entry<Instance, Runners> entries : runningInst.entrySet()){
+    		heavyAux = entries.getValue().heavy;
+    		mediumAux = entries.getValue().medium;
+    		lightAux = entries.getValue().light;
+    		ratioAux = heavyAux+mediumAux+lightAux;
+    		if(entries.getValue().equals(null) || entries.getValue().equals(runAux)){
+    			if(rank.equals(LIGHT))
+    				runAux.light++;
+    			else if(rank.equals(MEDIUM))
+    					runAux.medium++;
+    			else runAux.heavy++;
+    			runningInst.put(entries.getKey(), runAux);
+    			return entries.getKey().getPublicIpAddress();
+    		}
+    		if(rank.equals(HEAVY) && ratioAux < TEN){
+    			if(heavyAux == MAX_HEAVY)
+    				continue;
+    			else if(heavyAux == 1 && ratio > (ratioAux + 4)){
+    				ratio = ratioAux + 4;
+    				addrAux = entries.getKey().getPublicIpAddress();
+    			}
+    			else if(ratio > (ratioAux + 4)){
+    				ratio = ratioAux;
+    				addrAux = entries.getKey().getPublicIpAddress();
+    			}
+    		}
+    		if(rank.equals(MEDIUM) && ratioAux < TEN){
+    			if(ratio > (ratioAux + 2)){
+    				ratio = ratioAux + 2;
+    				addrAux = entries.getKey().getPublicIpAddress();
+    			}
+    		}
+    		if(rank.equals(LIGHT) && ratioAux < TEN){
+    			if(ratio > (ratioAux + 1)){
+    				ratio = ratioAux + 1;
+    				addrAux = entries.getKey().getPublicIpAddress();
+    			}
+    		}
+    	}
+    	
+    	if(addrAux.equals(""))
+    		return addrAux;
+    	
+    	if(rank.equals(LIGHT))
+			runAux.light++;
+		else if(rank.equals(MEDIUM))
+				runAux.medium++;
+		else runAux.heavy++;
+    	runningInst.put(instanAux, runAux);
+    	threadInstance.put(String.valueOf(Thread.currentThread().getId()), instanAux);
+    	return addrAux;
     }
+    
+    // Method to process information after the Query was answered back to the client
+    // Putting new information on the necessary structures.
+    private static void postRequest(String queryAux) {
+    	Map<String, AttributeValue> getitem = new HashMap<String, AttributeValue>();
+    	getitem.put("queryparam", new AttributeValue(queryAux));
+    	GetItemResult itemrec = dynamoDB.getItem(TABLENAME, getitem);
+    	Map<String, AttributeValue> maprec = itemrec.getItem();
+    	String rankrec = maprec.get(queryAux).toString();
+    	rankedQuery.put(queryAux, rankrec);
+    	System.out.print("The query params: " + queryAux + "\nThe rank of the query: " + rankrec);
+    	
+    	Instance instanAux = threadInstance.get(String.valueOf(Thread.currentThread().getId()));
+    	Runners runAux = runningInst.get(instanAux);
+    	String rankAux = rankedQuery.get(queryAux);
+    	
+    	if(rankAux.equals(HEAVY))
+    		runAux.heavy--;
+    	else if(rankAux.equals(LIGHT))
+    		runAux.light--;
+    	else runAux.medium--;
+    	runningInst.put(instanAux, runAux);
+    }
+    
     
     static class MyHandler implements HttpHandler {
         @Override
@@ -128,12 +253,14 @@ public class LoadBalancer {
         	String queryAux = t.getRequestURI().getQuery();
 
         	String chosenWS = pickWS(queryAux);
+        	if(chosenWS.equals(""))
+        		System.out.println("SOMETHING SHOULDN'T HAVE HAPPENED HERE!!!");
         	
         	URL url = new URL(String.format("http://%s:%s%s?%s", chosenWS, WS_PORT, R_HTML, queryAux));
         	HttpURLConnection connection = (HttpURLConnection) url.openConnection();
         	connection.setDoInput(true);
         	connection.setDoOutput(true);
-        	connection.setReadTimeout(1000 * 60 * 10);
+        	connection.setReadTimeout(1000 * 60 * TEN);
         	Scanner s = new Scanner(connection.getInputStream());
         	String response = "";
         	while(s.hasNext()){
@@ -142,21 +269,38 @@ public class LoadBalancer {
         	s.close();
         	byte[] receivedResponse = DatatypeConverter.parseBase64Binary(response);
         	t.sendResponseHeaders(200, receivedResponse.length);
-        	t.getResponseBody().write(receivedResponse);
+            OutputStream os = t.getResponseBody();
+            os.write(receivedResponse);
+            os.flush();
+            os.close();
         	
-        	calculateRank(queryAux);
-        	
+            postRequest(queryAux);
         }
     }
     
-    
-    private static void calculateRank(String queryAux) {
-    	
-    }
-    
-    
+    private static InetAddress localhostAddress() {
+		try {
+			try {
+				Enumeration<NetworkInterface> e = NetworkInterface.getNetworkInterfaces();
+				while (e.hasMoreElements()) {
+					NetworkInterface n = e.nextElement();
+					Enumeration<InetAddress> ee = n.getInetAddresses();
+					while (ee.hasMoreElements()) {
+						InetAddress i = ee.nextElement();
+						if (i instanceof Inet4Address && !i.isLoopbackAddress())
+							return i;
+					}
+				}
+			} catch (SocketException e) {
+				// do nothing
+			}
+			return InetAddress.getLocalHost();
+		} catch (UnknownHostException e) {
+			return null;
+		}
+	}
+
     public static class ThreadHelper extends Thread {
-    	
     	@Override
     	public void run() {
     		while(true) {
@@ -165,7 +309,8 @@ public class LoadBalancer {
 	            for (Reservation reservation : reservations) {
 	            	for (Instance instanceToCheck : reservation.getInstances()) {
 	            		if(instanceToCheck.getState().getName().equalsIgnoreCase(InstanceStateName.Running.name()) &&
-	            				!runningInst.containsKey(instanceToCheck));
+	            				!runningInst.containsKey(instanceToCheck) && 
+	            				!instanceToCheck.getPublicIpAddress().equals(localhostAddress().getCanonicalHostName()));
 	            			runningInst.put(instanceToCheck, null);
 	            	}
 	            }

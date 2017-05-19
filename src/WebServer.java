@@ -87,6 +87,7 @@ public class WebServer {
                 t.sendResponseHeaders(200, stringToSend.length());
                 OutputStream os = t.getResponseBody();
                 os.write(stringToSend.getBytes());
+                os.flush();
                 os.close();
                 long threadId = Thread.currentThread().getId();
                 System.out.println("Thread finished execution: " + threadId);
