@@ -264,7 +264,17 @@ public class LoadBalancer {
         	String queryAux = t.getRequestURI().getQuery();
         	String chosenWS = "";
         	
-	        chosenWS = pickWS(queryAux);
+        	while(true){
+        		chosenWS = pickWS(queryAux);
+        		if(!chosenWS.equals(""))
+        			break;
+        		try {
+					Thread.sleep(5000);
+				} catch (InterruptedException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+        	}
 
         	
         	URL url = new URL(String.format("http://%s:%s%s?%s", chosenWS, WS_PORT, R_HTML, queryAux));
@@ -322,10 +332,8 @@ public class LoadBalancer {
     		    	for (Instance instanceToCheck : reservation.getInstances()) {
     		    		if(instanceToCheck.getState().getName().equalsIgnoreCase(InstanceStateName.Running.name()) &&
     		    				!runningInst.containsKey(instanceToCheck) && 
-    		    				!instanceToCheck.getInstanceId().equals("i-034acd2788a980bbc")){
+    		    				!instanceToCheck.getInstanceId().equals("i-034acd2788a980bbc"))
     		    			runningInst.put(instanceToCheck, new Runners(0,0,0));
-    		    			System.out.println("THIS IS MY INSTANCE ID: " + instanceToCheck.getInstanceId());
-    		    		}
     		    	}
     		    }
 	            try {
