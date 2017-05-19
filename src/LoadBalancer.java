@@ -165,7 +165,7 @@ public class LoadBalancer {
 	            for (Reservation reservation : reservations) {
 	            	for (Instance instanceToCheck : reservation.getInstances()) {
 	            		if(instanceToCheck.getState().getName().equalsIgnoreCase(InstanceStateName.Running.name()) &&
-	            				!runningInst.containsKey(instanceToCheck))
+	            				!runningInst.containsKey(instanceToCheck));
 	            			runningInst.put(instanceToCheck, null);
 	            	}
 	            }
