@@ -120,7 +120,7 @@ public class LoadBalancer {
     }
     
     // Method to pick a WS where to send the request!
-    private static String pickWS(String queryAux) {
+    private synchronized static String pickWS(String queryAux) {
     	String rank = "";
     	
     	// Get rank if it exists saved locally
@@ -236,7 +236,7 @@ public class LoadBalancer {
     
     // Method to process information after the Query was answered back to the client
     // Putting new information on the necessary structures.
-    private static void postRequest(String queryAux) {
+    private synchronized static void postRequest(String queryAux) {
     	Map<String, AttributeValue> getitem = new HashMap<String, AttributeValue>();
     	getitem.put("queryparam", new AttributeValue(queryAux));
     	GetItemResult itemrec = dynamoDB.getItem(TABLENAME, getitem);
@@ -327,7 +327,7 @@ public class LoadBalancer {
     		    	}
     		    }
 	            try {
-	            	Thread.currentThread().sleep(60000);
+	            	Thread.sleep(10000);
 				} catch (InterruptedException e) {
 					e.printStackTrace();
 				}
