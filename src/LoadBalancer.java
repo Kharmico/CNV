@@ -120,7 +120,7 @@ public class LoadBalancer {
     }
     
     // Method to pick a WS where to send the request!
-    private synchronized static String pickWS(String queryAux) {
+    private static String pickWS(String queryAux) {
     	String rank = "";
     	
     	// Get rank if it exists saved locally
@@ -236,7 +236,7 @@ public class LoadBalancer {
     
     // Method to process information after the Query was answered back to the client
     // Putting new information on the necessary structures.
-    private synchronized static void postRequest(String queryAux) {
+    private static void postRequest(String queryAux) {
     	Map<String, AttributeValue> getitem = new HashMap<String, AttributeValue>();
     	getitem.put("queryparam", new AttributeValue(queryAux));
     	GetItemResult itemrec = dynamoDB.getItem(TABLENAME, getitem);
@@ -263,17 +263,9 @@ public class LoadBalancer {
         public void handle(HttpExchange t) throws IOException {
         	String queryAux = t.getRequestURI().getQuery();
         	String chosenWS = "";
-        	while(true) {
-	        	chosenWS = pickWS(queryAux);
-	        	if(!chosenWS.equals(""))
-	        		break;
-				try {
-					Thread.sleep(5000);
-				} catch (InterruptedException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-        	}
+        	
+	        chosenWS = pickWS(queryAux);
+
         	
         	URL url = new URL(String.format("http://%s:%s%s?%s", chosenWS, WS_PORT, R_HTML, queryAux));
         	HttpURLConnection connection = (HttpURLConnection) url.openConnection();
@@ -335,7 +327,7 @@ public class LoadBalancer {
     		    	}
     		    }
 	            try {
-					Thread.sleep(60000);
+	            	Thread.currentThread().sleep(60000);
 				} catch (InterruptedException e) {
 					e.printStackTrace();
 				}
