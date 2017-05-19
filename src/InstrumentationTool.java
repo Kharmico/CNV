@@ -20,6 +20,7 @@ import com.amazonaws.services.dynamodbv2.model.AttributeDefinition;
 import com.amazonaws.services.dynamodbv2.model.AttributeValue;
 import com.amazonaws.services.dynamodbv2.model.ComparisonOperator;
 import com.amazonaws.services.dynamodbv2.model.Condition;
+import com.amazonaws.services.dynamodbv2.model.ConditionalCheckFailedException;
 import com.amazonaws.services.dynamodbv2.model.CreateTableRequest;
 import com.amazonaws.services.dynamodbv2.model.DescribeTableRequest;
 import com.amazonaws.services.dynamodbv2.model.KeySchemaElement;
@@ -36,6 +37,9 @@ import com.amazonaws.services.dynamodbv2.util.TableUtils.TableNeverTransitionedT
 
 
 public class InstrumentationTool {
+	private static final String LIGHT = "LIGHT";
+	private static final String MEDIUM = "MEDIUM";
+	private static final String HEAVY = "HEAVY";
 	private static final String TABLENAME = "RTMetrics";
 	private static ConcurrentHashMap<Long, Metrics> metricsPerThread = new ConcurrentHashMap<Long, Metrics>();
 	private static String queryParams;
@@ -213,8 +217,18 @@ public class InstrumentationTool {
 		
         metric = metricsPerThread.get(threadId);
 		try {
+			// Calculate rank, based on calculation and metrics obtained with the teacher's provided examples
+			String rankS;
+			double heavyRank = 1031.65;
+			double mediumRank = 243.85000000000002;
 			double rank = (metric.bb_count/100000)*0.1 + (metric.fieldaccess_count/100000)*0.1 + 
 					(metric.instr_count/100000)*0.4 + (metric.memaccess_count/100000)*0.35 + metric.method_count*0.05;
+			if(rank >= heavyRank)
+				rankS = HEAVY;
+			else if (rank >= mediumRank && rank < heavyRank)
+				rankS = MEDIUM;
+			else rankS = LIGHT;
+			
 			Map<String, AttributeValue> item = new HashMap<String, AttributeValue>();
 	        item.put("queryparam", new AttributeValue(queryParams));
 	        item.put("method", new AttributeValue(String.valueOf(metric.method_count)));
@@ -222,12 +236,18 @@ public class InstrumentationTool {
 	        item.put("instr", new AttributeValue(String.valueOf(metric.instr_count)));
 	        item.put("fieldaccess", new AttributeValue(String.valueOf(metric.fieldaccess_count)));
 	        item.put("memaccess", new AttributeValue(String.valueOf(metric.memaccess_count)));
-	        item.put("rankN", new AttributeValue(String.valueOf(rank)));
-	        item.put("rankS", new AttributeValue("0"));
+	        item.put("rank", new AttributeValue(rankS));
 	        PutItemRequest putItemRequest = new PutItemRequest(TABLENAME, item).withConditionExpression("attribute_not_exists(queryparam)");
 	        dynamoDB.putItem(putItemRequest);
 	        metric.reset();
 	        metricsPerThread.put(threadId, metric);
+	        
+		} catch (ConditionalCheckFailedException ccfe) {
+			System.out.println("Caught a ConditionalCheckFailedException, which means your request made it "
+	                + "to AWS, but was rejected with an error response for returning false for the condition.");
+	        System.out.println("HTTP Status Code: " + ccfe.getStatusCode());
+	        System.out.println("AWS Error Code:   " + ccfe.getErrorCode());
+	        System.out.println("Error Type:       " + ccfe.getErrorType());
 		} catch (AmazonServiceException ase) {
 	        System.out.println("Caught an AmazonServiceException, which means your request made it "
 	                + "to AWS, but was rejected with an error response for some reason.");
