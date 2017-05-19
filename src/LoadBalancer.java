@@ -48,13 +48,16 @@ import com.sun.net.httpserver.HttpServer;
 
 
 public class LoadBalancer {
+	private static String LIGHT = "LIGHT";
+	private static String MEDIUM = "MEDIUM";
+	private static String HEAVY = "HEAVY";
 	private static AWSCredentials credentials = null;
 	private static AmazonDynamoDBClient dynamoDB;
 	private static AmazonEC2 ec2;
 	private static ExecutorService executor;
 	private static List<Reservation> reservations;
 	private static Map<Instance, Runners> runningInst;
-	private static Map<String, Integer> rankedQuery; // String is the query params, Integer is the result of the metrics calculation
+	private static Map<String, String> rankedQuery; // String is the query params, Integer is the result of the metrics calculation
 	private static final String WS_PORT = "8000";
 	private static final String R_HTML = "/r.html";
 	private static final String TABLENAME = "RTMetrics";
@@ -99,8 +102,11 @@ public class LoadBalancer {
     }
     
     // Method to pick a WS where to send the request!
-    private static String pickWS() {
-        
+    private static String pickWS(String queryAux) {
+        String rank;
+    	if(rankedQuery.containsKey(queryAux))
+    		rank = rankedQuery.get(queryAux);
+    	
     	
     	Runners runAux = new Runners(0,0,0);
     	for(Map.Entry<Instance, Runners> entries : runningInst.entrySet()){
@@ -115,7 +121,7 @@ public class LoadBalancer {
         public void handle(HttpExchange t) throws IOException {
         	String queryAux = t.getRequestURI().getQuery();
 
-        	String chosenWS = pickWS();
+        	String chosenWS = pickWS(queryAux);
         	
         	URL url = new URL(String.format("http://%s:%s%s?%s", chosenWS, WS_PORT, R_HTML, queryAux));
         	HttpURLConnection connection = (HttpURLConnection) url.openConnection();
@@ -139,7 +145,7 @@ public class LoadBalancer {
     
     
     private static void calculateRank(String queryAux) {
- 
+    	
     }
     
     
