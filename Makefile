@@ -12,6 +12,7 @@ all:
 	rsync -av bin2/* bin/ --exclude RayTracer.class
 	
 	$(JAVAC) $(JFLAGS) bin -classpath bin:third-party:. src/WebServer.java
+#	$(JAVA) -cp "bin:third-party:third-party/*" -XX:-UseSplitVerifier WebServer &
 
 clean:
 	rm -rf bin/raytracer bin2/raytracer bin/BIT bin/*.class
