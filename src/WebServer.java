@@ -30,13 +30,19 @@ import raytracer.RayTracer;
 
 public class WebServer {
 	private static ExecutorService executor;
+	private static ExecutorService executorHealth;
 	
     public static void main(String[] args) throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress(8000), 0);
+        HttpServer serverHealth = HttpServer.create(new InetSocketAddress(8001), 0);
+        executorHealth = Executors.newSingleThreadExecutor();
         executor = Executors.newFixedThreadPool(10);
         server.createContext("/r.html", new MyHandler());
+        serverHealth.createContext("/r.html", new MyHandlerHealth());
         server.setExecutor(executor); // creates a default executor
+        serverHealth.setExecutor(executorHealth);
         server.start();
+        serverHealth.start();
     }
 
     static class MyHandler implements HttpHandler {
@@ -97,6 +103,16 @@ public class WebServer {
                 os.write("health check".getBytes());
                 os.close();
             }
+        }
+    }
+    
+    static class MyHandlerHealth implements HttpHandler {
+        @Override
+        public void handle(HttpExchange t) throws IOException {
+            t.sendResponseHeaders(200, "WebServer Health Check".length());
+            OutputStream os= t.getResponseBody();
+            os.write("health check".getBytes());
+            os.close();
         }
     }
 }

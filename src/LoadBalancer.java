@@ -5,8 +5,10 @@ import java.net.HttpURLConnection;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.MalformedURLException;
 import java.net.NetworkInterface;
 import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.net.UnknownHostException;
@@ -66,6 +68,7 @@ public class LoadBalancer {
 	private static final int MAX_MEDIUM = 5;
 	private static final int MAX_LIGHT = TEN;
 	private static final String WS_PORT = "8000";
+	private static final String WS_HEALTH_PORT = "8001";
 	private static final String R_HTML = "/r.html";
 	private static final String TABLENAME = "RTMetrics";
 	private static AWSCredentials credentials = null;
@@ -119,8 +122,9 @@ public class LoadBalancer {
         server.start();
     }
     
-    // Method to pick a WS where to send the request!
-    private synchronized static String pickWS(String queryAux) {
+    // Method to get the rank of the query, if already seen.
+    // If query hasn't been seen yet, estimate the rank
+    private synchronized static String getRank(String queryAux) {
     	String rank = "";
     	
     	// Get rank if it exists saved locally
@@ -157,10 +161,21 @@ public class LoadBalancer {
         			valueToCheck = eucliDist;
         			rank = queryEntries.getValue();
         		}
+				/* if (eucliDist == 0)
+				rank = queryEntries.getValue;
+				break;
+				*/
         	}
         	if(rank.equals(""))
         		rank = HEAVY;
         }
+    	return rank;
+    }
+    
+    
+    // Method to pick a WS where to send the request!
+    private synchronized static String pickWS(String queryAux, String queryRank) {
+    	
 
     	// Pick the instance where to send the query to, by checking the load of queries on each one.
 
@@ -183,15 +198,15 @@ public class LoadBalancer {
     		lightAux = entries.getValue().light;
     		ratioAux = heavyAux*4+mediumAux*2+lightAux;
     		if(entries.getValue().equals(null) || entries.getValue().equals(runAux)){
-    			if(rank.equals(LIGHT))
+    			if(queryRank.equals(LIGHT))
     				runAux.light++;
-    			else if(rank.equals(MEDIUM))
+    			else if(queryRank.equals(MEDIUM))
     					runAux.medium++;
     			else runAux.heavy++;
     			runningInst.put(entries.getKey(), runAux);
     			return entries.getKey().getPublicIpAddress();
     		}
-    		if(rank.equals(HEAVY) && ratioAux < TEN){
+    		if(queryRank.equals(HEAVY) && ratioAux < TEN){
     			if(heavyAux == MAX_HEAVY)
     				continue;
     			else if(heavyAux == 1 && ratio > (ratioAux + 4)){
@@ -205,14 +220,14 @@ public class LoadBalancer {
     				instanAux = entries.getKey();
     			}
     		}
-    		if(rank.equals(MEDIUM) && ratioAux < TEN){
+    		if(queryRank.equals(MEDIUM) && ratioAux < TEN){
     			if(ratio > (ratioAux + 2)){
     				ratio = ratioAux + 2;
     				addrAux = entries.getKey().getPublicIpAddress();
     				instanAux = entries.getKey();
     			}
     		}
-    		if(rank.equals(LIGHT) && ratioAux < TEN){
+    		if(queryRank.equals(LIGHT) && ratioAux < TEN){
     			if(ratio > (ratioAux + 1)){
     				ratio = ratioAux + 1;
     				addrAux = entries.getKey().getPublicIpAddress();
@@ -224,9 +239,9 @@ public class LoadBalancer {
     	if(addrAux.equals(""))
     		return addrAux;
     	
-    	if(rank.equals(LIGHT))
+    	if(queryRank.equals(LIGHT))
 			runAux.light++;
-		else if(rank.equals(MEDIUM))
+		else if(queryRank.equals(MEDIUM))
 				runAux.medium++;
 		else runAux.heavy++;
     	runningInst.put(instanAux, runAux);
@@ -238,16 +253,17 @@ public class LoadBalancer {
     // Putting new information on the necessary structures.
     private synchronized static void postRequest(String queryAux) {
     	Map<String, AttributeValue> getitem = new HashMap<String, AttributeValue>();
+    	Instance instanAux = threadInstance.get(String.valueOf(Thread.currentThread().getId()));
+    	
+    	Runners runAux = runningInst.get(instanAux);
+    	String rankAux = rankedQuery.get(queryAux);
+    	
     	getitem.put("queryparam", new AttributeValue(queryAux));
     	GetItemResult itemrec = dynamoDB.getItem(TABLENAME, getitem);
     	Map<String, AttributeValue> maprec = itemrec.getItem();
     	String rankrec = maprec.get(queryAux).toString();
     	rankedQuery.put(queryAux, rankrec);
     	System.out.print("The query params: " + queryAux + "\nThe rank of the query: " + rankrec);
-    	
-    	Instance instanAux = threadInstance.get(String.valueOf(Thread.currentThread().getId()));
-    	Runners runAux = runningInst.get(instanAux);
-    	String rankAux = rankedQuery.get(queryAux);
     	
     	if(rankAux.equals(HEAVY))
     		runAux.heavy--;
@@ -263,31 +279,40 @@ public class LoadBalancer {
         public void handle(HttpExchange t) throws IOException {
         	String queryAux = t.getRequestURI().getQuery();
         	String chosenWS = "";
+        	String response = "";
+        	String queryRank = getRank(queryAux);
         	
         	while(true){
-        		chosenWS = pickWS(queryAux);
-        		if(!chosenWS.equals(""))
+        		chosenWS = pickWS(queryAux, queryRank);
+        		if(!chosenWS.equals("")){
+        			URL url = new URL(String.format("http://%s:%s%s?%s", chosenWS, WS_PORT, R_HTML, queryAux));
+                	HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+                	connection.setDoInput(true);
+                	connection.setDoOutput(true);
+                	connection.setReadTimeout(1000 * 60 * TEN);
+                	
+                	try {
+                		Scanner s = new Scanner(connection.getInputStream());
+                		
+                    	while(s.hasNext()){
+                    		response += s.next() + " ";
+                    	}
+                    	s.close();
+                	} catch(SocketTimeoutException ste) {
+                		System.out.println("TIMEOUT HAPPENED WHEN WAITING FOR ANSWER FROM: " + chosenWS);
+                		continue;
+                	}
         			break;
+        		}
         		try {
 					Thread.sleep(5000);
 				} catch (InterruptedException e) {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
+					continue;
 				}
         	}
-
         	
-        	URL url = new URL(String.format("http://%s:%s%s?%s", chosenWS, WS_PORT, R_HTML, queryAux));
-        	HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-        	connection.setDoInput(true);
-        	connection.setDoOutput(true);
-        	connection.setReadTimeout(1000 * 60 * TEN);
-        	Scanner s = new Scanner(connection.getInputStream());
-        	String response = "";
-        	while(s.hasNext()){
-        		response += s.next() + " ";
-        	}
-        	s.close();
         	byte[] receivedResponse = DatatypeConverter.parseBase64Binary(response);
         	t.sendResponseHeaders(200, receivedResponse.length);
             OutputStream os = t.getResponseBody();
@@ -300,7 +325,7 @@ public class LoadBalancer {
     }
     
     
-    public static class ThreadHelper extends Thread {
+    public static class ThreadHelper extends Thread  {
     	@Override
     	public void run() {
     		while(true) {
@@ -308,11 +333,29 @@ public class LoadBalancer {
     		    reservations = describeInstancesRequest.getReservations();
     		    for (Reservation reservation : reservations) {
     		    	for (Instance instanceToCheck : reservation.getInstances()) {
+            			URL url;
+            			HttpURLConnection connection = null;
+						try {
+							url = new URL(String.format("http://%s:%s%s", instanceToCheck.getPublicIpAddress(), WS_HEALTH_PORT, R_HTML));
+							connection = (HttpURLConnection) url.openConnection();
+						} catch (IOException e) {
+							// TODO Auto-generated catch block
+							e.printStackTrace();
+						}
+                    	connection.setDoInput(true);
+                    	connection.setDoOutput(true);
+                    	connection.setReadTimeout(1000 * 60 * TEN);
+                    	try {
+                    		connection.getInputStream();
+                    	} catch(IOException ioe) {
+                    		System.out.println("Timeout happened, or instance does not exist: " + instanceToCheck.getPublicIpAddress());
+                    		runningInst.remove(instanceToCheck);
+                    		continue;
+                    	}
     		    		if(instanceToCheck.getState().getName().equalsIgnoreCase(InstanceStateName.Running.name()) &&
     		    				!runningInst.containsKey(instanceToCheck) && !instanceToCheck.getInstanceId().equals("i-034acd2788a980bbc"))
     		    			runningInst.put(instanceToCheck, new Runners(0,0,0));
-    		    		if(!instanceToCheck.getState().getName().equalsIgnoreCase(InstanceStateName.Running.name()) && 
-    		    				runningInst.containsKey(instanceToCheck))
+    		    		if(!instanceToCheck.getState().getName().equalsIgnoreCase(InstanceStateName.Running.name()))
     		    				runningInst.remove(instanceToCheck);
     		    	}
     		    }
