@@ -298,8 +298,17 @@ public class LoadBalancer {
                     		response += s.next() + " ";
                     	}
                     	s.close();
-                	} catch(SocketTimeoutException ste) {
-                		System.out.println("TIMEOUT HAPPENED WHEN WAITING FOR ANSWER FROM: " + chosenWS);
+                	} catch(IOException ioe) {
+                		System.out.println("TIMEOUT OR CONNECTION ERROR HAPPENED WHEN WAITING FOR ANSWER FROM: " + chosenWS);
+				Instance instanAux = threadInstance.get(String.valueOf(Thread.currentThread().getId()));
+				Runners runAux = runningInst.get(instanAux);
+				String rankAux = rankedQuery.get(queryAux);
+			        if(rankAux.equals(HEAVY))
+               				 runAux.heavy--;
+        			else if(rankAux.equals(LIGHT))
+                			runAux.light--;
+        			else runAux.medium--;
+       				runningInst.put(instanAux, runAux);
                 		continue;
                 	}
         			break;
@@ -344,7 +353,7 @@ public class LoadBalancer {
 						}
                     	connection.setDoInput(true);
                     	connection.setDoOutput(true);
-                    	connection.setReadTimeout(1000 * 60 * TEN);
+                    	connection.setReadTimeout(TEN * 1000);
                     	try {
                     		connection.getInputStream();
                     	} catch(IOException ioe) {
